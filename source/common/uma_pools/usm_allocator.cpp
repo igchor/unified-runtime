@@ -293,7 +293,7 @@ public:
 
   void *allocate(size_t Size, size_t Alignment, bool &FromPool);
   void *allocate(size_t Size, bool &FromPool);
-  void deallocate(void *Ptr, bool &ToPool, bool OwnZeMemHandle);
+  void deallocate(void *Ptr, bool &ToPool);
 
   SystemMemory &getMemHandle() { return *MemHandle; }
 
@@ -337,7 +337,7 @@ Slab::Slab(Bucket &Bkt)
 
 Slab::~Slab() {
   unregSlab(*this);
-  bucket.getMemHandle().deallocate(MemPtr, true /* OwnZeMemHandle */);
+  bucket.getMemHandle().deallocate(MemPtr);
 }
 
 // Return the index of the first available chunk, -1 otherwize
@@ -743,8 +743,7 @@ Bucket &USMAllocContext::USMAllocImpl::findBucket(size_t Size) {
   return *(*It);
 }
 
-void USMAllocContext::USMAllocImpl::deallocate(void *Ptr, bool &ToPool,
-                                               bool OwnZeMemHandle) {
+void USMAllocContext::USMAllocImpl::deallocate(void *Ptr, bool &ToPool) {
   auto *SlabPtr = AlignPtrDown(Ptr, SlabMinSize());
 
   // Lock the map on read
@@ -754,7 +753,7 @@ void USMAllocContext::USMAllocImpl::deallocate(void *Ptr, bool &ToPool,
   auto Slabs = getKnownSlabs().equal_range(SlabPtr);
   if (Slabs.first == Slabs.second) {
     Lk.unlock();
-    getMemHandle().deallocate(Ptr, OwnZeMemHandle);
+    getMemHandle().deallocate(Ptr);
     return;
   }
 
@@ -785,7 +784,7 @@ void USMAllocContext::USMAllocImpl::deallocate(void *Ptr, bool &ToPool,
   // There is a rare case when we have a pointer from system allocation next
   // to some slab with an entry in the map. So we find a slab
   // but the range checks fail.
-  getMemHandle().deallocate(Ptr, OwnZeMemHandle);
+  getMemHandle().deallocate(Ptr);
 }
 
 USMAllocContext::USMAllocContext(std::unique_ptr<SystemMemory> MemHandle,
@@ -819,9 +818,9 @@ void *USMAllocContext::allocate(size_t size, size_t alignment) {
   return Ptr;
 }
 
-void USMAllocContext::deallocate(void *ptr, bool OwnZeMemHandle) {
+void USMAllocContext::deallocate(void *ptr) {
   bool ToPool;
-  pImpl->deallocate(ptr, ToPool, OwnZeMemHandle);
+  pImpl->deallocate(ptr, ToPool);
 
   if (pImpl->getParams().PoolTrace > 2) {
     auto MT = pImpl->getParams().memoryTypeName;
