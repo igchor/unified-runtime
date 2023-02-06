@@ -12,7 +12,7 @@ target_include_directories(ur_common INTERFACE
 )
 
 add_subdirectory(unified_memory_allocation)
-target_link_libraries(ur_common INTERFACE unified_memory_allocation ${CMAKE_DL_LIBS} ${PROJECT_NAME}::headers)
+target_link_libraries(ur_common INTERFACE unified_memory_allocation disjoint_pool ${CMAKE_DL_LIBS} ${PROJECT_NAME}::headers)
 
 target_sources(ur_common INTERFACE uma_helpers.hpp)
 
@@ -29,3 +29,9 @@ else()
             uma_helpers.hpp ur_pool_manager.hpp
     )
 endif()
+
+# target_include_directories(disjoint_pool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# target_link_libraries(common INTERFACE disjoint_pool)
+
+# target_sources(common INTERFACE usm_pool_config.cpp)
+# target_link_libraries(common INTERFACE ${PROJECT_NAME}::headers)
