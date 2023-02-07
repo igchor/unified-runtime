@@ -26,6 +26,8 @@ function(add_uma_test name)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endfunction()
 
+add_subdirectory(uma_pools)
+
 add_uma_test(memoryProvider memoryProvider.cpp)
 add_uma_test(memoryPool memoryPool.cpp)
 add_uma_test(base base.cpp)
