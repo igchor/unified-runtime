@@ -18,6 +18,39 @@ etors:
     - name: ALLOC_FLAGS_INTEL
       value: "$X_BIT(0)"
       desc: "The USM memory allocation is from Intel USM"
+    - name: WRITE_COMBINED
+      value: "$X_BIT(1)"
+      desc: "Memory should be allocated write-combined (WC)"
+    - name: ZERO_INITIALIZED
+      value: "$X_BIT(2)"
+      desc: "Memory from the driver should be zero-initialized"
+    - name: INITIAL_PLACEMENT_DEVICE
+      value: "$X_BIT(3)"
+      desc: "Optimize shared allocation for first access on the device"
+    - name: INITIAL_PLACEMENT_HOST
+      value: "$X_BIT(4)"
+      desc: "Optimize shared allocation for first access on the host"
+--- #--------------------------------------------------------------------------
+type: enum
+desc: "USM memory property flags"
+class: $xUSM
+name: $x_usm_pool_flags_t
+etors:
+    - name: ALLOC_FLAGS_INTEL
+      value: "$X_BIT(0)"
+      desc: "The USM memory allocation is from Intel USM"
+    - name: WRITE_COMBINED
+      value: "$X_BIT(1)"
+      desc: "Memory should be allocated write-combined (WC)"
+    - name: ZERO_INITIALIZED
+      value: "$X_BIT(2)"
+      desc: "Memory from the driver should be zero-initialized"
+    - name: BIAS_CACHED
+      value: "$X_BIT(3)"
+      desc: "Hints that memory should be cached"
+    - name: BIAS_UNCACHED
+      value: "$X_BIT(4)"
+      desc: "Hints that memory should be uncached"
 --- #--------------------------------------------------------------------------
 type: enum
 desc: "USM allocation type"
@@ -47,6 +80,51 @@ etors:
     - name: DEVICE
       desc: "Memory allocation device info"
 --- #--------------------------------------------------------------------------
+type: struct
+desc: "USM allocation descriptor type"
+class: $xUSM
+name: $x_usm_desc_t
+base: $x_base_desc_t
+members:
+    - type: $x_usm_mem_flags_t
+      name:  flags
+      desc: "[in] memory allocation flags"
+    - type: $x_ur_mem_advice_t
+      name: hints
+      desc: "[in] Memory advice hints"
+    - type: "void*"
+      name: poolId
+      desc: "[in] Pointer to a pool created using urCreateUSMPool"
+--- #--------------------------------------------------------------------------
+type: struct
+desc: "USM pool descriptor type"
+class: $xUSM
+name: $x_usm_pool_desc_t
+base: $x_base_desc_t
+members:
+    - type: $x_usm_pool_flags_t
+      name:  flags
+      desc: "[in] memory allocation flags"
+--- #--------------------------------------------------------------------------
+type: struct
+desc: "USM disjoint pool descriptor type"
+class: $xUSM
+name: $x_usm_disjoint_pool_desc_t
+base: $x_base_desc_t
+members:
+    - type: "size_t"
+      name:  maxPoolSize
+      desc: "[in] Maximum size of a memory pool"
+    - type: "size_t"
+      name:  maxPoolableSize
+      desc: "[in] Allocations up to this limit will be subject to pooling"
+    - type: "size_t"
+      name:  capacity
+      desc: "[in] When pooling, each bucket will hold a max of 4 unfreed slabs"
+    - type: "size_t"
+      name:  slabMinSize
+      desc: "[in] Minimum allocation size that will be requested from the driver"
+--- #--------------------------------------------------------------------------
 type: function
 desc: "USM allocate host memory"
 class: $xUSM
@@ -56,9 +134,9 @@ params:
     - type: $x_context_handle_t
       name: hContext
       desc: "[in] handle of the context object"
-    - type: $x_usm_mem_flags_t*
-      name: pUSMFlag
-      desc: "[in] USM memory allocation flags"
+    - type: $x_usm_desc_t*
+      name: pUSMDesc
+      desc: "[in] USM memory allocation descriptor"
     - type: "size_t"
       name: size
       desc: "[in] size in bytes of the USM memory object to be allocated"
@@ -87,9 +165,9 @@ params:
     - type: $x_device_handle_t
       name: hDevice
       desc: "[in] handle of the device object"
-    - type: $x_usm_mem_flags_t*
-      name: pUSMProp
-      desc: "[in] USM memory properties"
+    - type: $x_usm_desc_t*
+      name: pUSMDesc
+      desc: "[in] USM memory allocation descriptor"
     - type: "size_t"
       name: size
       desc: "[in] size in bytes of the USM memory object to be allocated"
@@ -118,9 +196,9 @@ params:
     - type: $x_device_handle_t
       name: hDevice
       desc: "[in] handle of the device object"
-    - type: $x_usm_mem_flags_t*
-      name: pUSMProp
-      desc: "[in] USM memory properties"
+    - type: $x_usm_desc_t*
+      name: pUSMDesc
+      desc: "[in] USM memory allocation descriptor"
     - type: "size_t"
       name: size
       desc: "[in] size in bytes of the USM memory object to be allocated"
@@ -181,4 +259,23 @@ returns:
     - $X_RESULT_ERROR_INVALID_CONTEXT
     - $X_RESULT_ERROR_INVALID_VALUE
     - $X_RESULT_ERROR_INVALID_MEM_OBJECT
+    - $X_RESULT_ERROR_OUT_OF_HOST_MEMORY
+--- #--------------------------------------------------------------------------
+type: function
+desc: "Create USM memory pool"
+class: $xUSM
+name: USMPoolCreate
+ordinal: "0"
+params:
+    - type: $x_context_handle_t
+      name: hContext
+      desc: "[in] handle of the context object"
+    - type: $x_usm_pool_desc_t*
+      name: pPoolDesc
+      desc: "[in] pointer to USM pool descriptor"
+    - type: void**
+      name: ppPool
+      desc: "[out] pointer to USM memory pool"
+returns:
+    - $X_RESULT_INVALID_VALUE
     - $X_RESULT_ERROR_OUT_OF_HOST_MEMORY

@@ -1938,7 +1938,7 @@ namespace driver
     __urdlllocal ur_result_t UR_APICALL
     urUSMHostAlloc(
         ur_context_handle_t hContext,                   ///< [in] handle of the context object
-        ur_usm_mem_flags_t* pUSMFlag,                   ///< [in] USM memory allocation flags
+        ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
         size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
         uint32_t align,                                 ///< [in] alignment of the USM memory object
         void** ppMem                                    ///< [out] pointer to USM host memory object
@@ -1950,7 +1950,7 @@ namespace driver
         auto pfnHostAlloc = d_context.urDdiTable.USM.pfnHostAlloc;
         if( nullptr != pfnHostAlloc )
         {
-            result = pfnHostAlloc( hContext, pUSMFlag, size, align, ppMem );
+            result = pfnHostAlloc( hContext, pUSMDesc, size, align, ppMem );
         }
         else
         {
@@ -1966,7 +1966,7 @@ namespace driver
     urUSMDeviceAlloc(
         ur_context_handle_t hContext,                   ///< [in] handle of the context object
         ur_device_handle_t hDevice,                     ///< [in] handle of the device object
-        ur_usm_mem_flags_t* pUSMProp,                   ///< [in] USM memory properties
+        ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
         size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
         uint32_t align,                                 ///< [in] alignment of the USM memory object
         void** ppMem                                    ///< [out] pointer to USM device memory object
@@ -1978,7 +1978,7 @@ namespace driver
         auto pfnDeviceAlloc = d_context.urDdiTable.USM.pfnDeviceAlloc;
         if( nullptr != pfnDeviceAlloc )
         {
-            result = pfnDeviceAlloc( hContext, hDevice, pUSMProp, size, align, ppMem );
+            result = pfnDeviceAlloc( hContext, hDevice, pUSMDesc, size, align, ppMem );
         }
         else
         {
@@ -1994,7 +1994,7 @@ namespace driver
     urUSMSharedAlloc(
         ur_context_handle_t hContext,                   ///< [in] handle of the context object
         ur_device_handle_t hDevice,                     ///< [in] handle of the device object
-        ur_usm_mem_flags_t* pUSMProp,                   ///< [in] USM memory properties
+        ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
         size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
         uint32_t align,                                 ///< [in] alignment of the USM memory object
         void** ppMem                                    ///< [out] pointer to USM shared memory object
@@ -2006,7 +2006,7 @@ namespace driver
         auto pfnSharedAlloc = d_context.urDdiTable.USM.pfnSharedAlloc;
         if( nullptr != pfnSharedAlloc )
         {
-            result = pfnSharedAlloc( hContext, hDevice, pUSMProp, size, align, ppMem );
+            result = pfnSharedAlloc( hContext, hDevice, pUSMDesc, size, align, ppMem );
         }
         else
         {
@@ -2059,6 +2059,31 @@ namespace driver
         if( nullptr != pfnGetMemAllocInfo )
         {
             result = pfnGetMemAllocInfo( hContext, pMem, propName, propValueSize, pPropValue, pPropValueSizeRet );
+        }
+        else
+        {
+            // generic implementation
+        }
+
+        return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////
+    /// @brief Intercept function for urUSMUSMPoolCreate
+    __urdlllocal ur_result_t UR_APICALL
+    urUSMUSMPoolCreate(
+        ur_context_handle_t hContext,                   ///< [in] handle of the context object
+        ur_usm_pool_desc_t* pPoolDesc,                  ///< [in] pointer to USM pool descriptor
+        void** ppPool                                   ///< [out] pointer to USM memory pool
+        )
+    {
+        ur_result_t result = UR_RESULT_SUCCESS;
+
+        // if the driver has created a custom function, then call it instead of using the generic path
+        auto pfnUSMPoolCreate = d_context.urDdiTable.USM.pfnUSMPoolCreate;
+        if( nullptr != pfnUSMPoolCreate )
+        {
+            result = pfnUSMPoolCreate( hContext, pPoolDesc, ppPool );
         }
         else
         {
@@ -3798,6 +3823,8 @@ urGetUSMProcAddrTable(
     pDdiTable->pfnFree                                   = driver::urUSMFree;
 
     pDdiTable->pfnGetMemAllocInfo                        = driver::urUSMGetMemAllocInfo;
+
+    pDdiTable->pfnUSMPoolCreate                          = driver::urUSMUSMPoolCreate;
 
     return result;
 }

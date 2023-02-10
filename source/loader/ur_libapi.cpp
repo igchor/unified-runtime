@@ -1140,7 +1140,7 @@ urEnqueueUSMPrefetch(
 ///     - ::UR_RESULT_ERROR_INVALID_NULL_POINTER
 ///         + `NULL == pMem`
 ///     - ::UR_RESULT_ERROR_INVALID_ENUMERATION
-///         + `::UR_MEM_ADVICE_DEFAULT < advice`
+///         + `::UR_MEM_ADVICE_BIAS_UNCACHED < advice`
 ///     - ::UR_RESULT_ERROR_INVALID_QUEUE
 ///     - ::UR_RESULT_ERROR_INVALID_EVENT
 ///     - ::UR_RESULT_ERROR_INVALID_MEM_OBJECT
@@ -2462,8 +2462,11 @@ urSamplerCreateWithNativeHandle(
 ///     - ::UR_RESULT_ERROR_INVALID_NULL_HANDLE
 ///         + `NULL == hContext`
 ///     - ::UR_RESULT_ERROR_INVALID_NULL_POINTER
-///         + `NULL == pUSMFlag`
+///         + `NULL == pUSMDesc`
+///         + `NULL == pUSMDesc->poolId`
 ///         + `NULL == ppMem`
+///     - ::UR_RESULT_ERROR_INVALID_ENUMERATION
+///         + `0x1f < pUSMDesc->flags`
 ///     - ::UR_RESULT_ERROR_INVALID_CONTEXT
 ///     - ::UR_RESULT_ERROR_INVALID_VALUE
 ///     - ::UR_RESULT_ERROR_INVALID_USM_SIZE
@@ -2472,7 +2475,7 @@ urSamplerCreateWithNativeHandle(
 ur_result_t UR_APICALL
 urUSMHostAlloc(
     ur_context_handle_t hContext,                   ///< [in] handle of the context object
-    ur_usm_mem_flags_t* pUSMFlag,                   ///< [in] USM memory allocation flags
+    ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
     size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,                                 ///< [in] alignment of the USM memory object
     void** ppMem                                    ///< [out] pointer to USM host memory object
@@ -2482,7 +2485,7 @@ urUSMHostAlloc(
     if( nullptr == pfnHostAlloc )
         return UR_RESULT_ERROR_UNINITIALIZED;
 
-    return pfnHostAlloc( hContext, pUSMFlag, size, align, ppMem );
+    return pfnHostAlloc( hContext, pUSMDesc, size, align, ppMem );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2496,8 +2499,11 @@ urUSMHostAlloc(
 ///         + `NULL == hContext`
 ///         + `NULL == hDevice`
 ///     - ::UR_RESULT_ERROR_INVALID_NULL_POINTER
-///         + `NULL == pUSMProp`
+///         + `NULL == pUSMDesc`
+///         + `NULL == pUSMDesc->poolId`
 ///         + `NULL == ppMem`
+///     - ::UR_RESULT_ERROR_INVALID_ENUMERATION
+///         + `0x1f < pUSMDesc->flags`
 ///     - ::UR_RESULT_ERROR_INVALID_CONTEXT
 ///     - ::UR_RESULT_ERROR_INVALID_VALUE
 ///     - ::UR_RESULT_ERROR_INVALID_USM_SIZE
@@ -2507,7 +2513,7 @@ ur_result_t UR_APICALL
 urUSMDeviceAlloc(
     ur_context_handle_t hContext,                   ///< [in] handle of the context object
     ur_device_handle_t hDevice,                     ///< [in] handle of the device object
-    ur_usm_mem_flags_t* pUSMProp,                   ///< [in] USM memory properties
+    ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
     size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,                                 ///< [in] alignment of the USM memory object
     void** ppMem                                    ///< [out] pointer to USM device memory object
@@ -2517,7 +2523,7 @@ urUSMDeviceAlloc(
     if( nullptr == pfnDeviceAlloc )
         return UR_RESULT_ERROR_UNINITIALIZED;
 
-    return pfnDeviceAlloc( hContext, hDevice, pUSMProp, size, align, ppMem );
+    return pfnDeviceAlloc( hContext, hDevice, pUSMDesc, size, align, ppMem );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2531,8 +2537,11 @@ urUSMDeviceAlloc(
 ///         + `NULL == hContext`
 ///         + `NULL == hDevice`
 ///     - ::UR_RESULT_ERROR_INVALID_NULL_POINTER
-///         + `NULL == pUSMProp`
+///         + `NULL == pUSMDesc`
+///         + `NULL == pUSMDesc->poolId`
 ///         + `NULL == ppMem`
+///     - ::UR_RESULT_ERROR_INVALID_ENUMERATION
+///         + `0x1f < pUSMDesc->flags`
 ///     - ::UR_RESULT_ERROR_INVALID_CONTEXT
 ///     - ::UR_RESULT_ERROR_INVALID_VALUE
 ///     - ::UR_RESULT_ERROR_INVALID_USM_SIZE
@@ -2542,7 +2551,7 @@ ur_result_t UR_APICALL
 urUSMSharedAlloc(
     ur_context_handle_t hContext,                   ///< [in] handle of the context object
     ur_device_handle_t hDevice,                     ///< [in] handle of the device object
-    ur_usm_mem_flags_t* pUSMProp,                   ///< [in] USM memory properties
+    ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
     size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,                                 ///< [in] alignment of the USM memory object
     void** ppMem                                    ///< [out] pointer to USM shared memory object
@@ -2552,7 +2561,7 @@ urUSMSharedAlloc(
     if( nullptr == pfnSharedAlloc )
         return UR_RESULT_ERROR_UNINITIALIZED;
 
-    return pfnSharedAlloc( hContext, hDevice, pUSMProp, size, align, ppMem );
+    return pfnSharedAlloc( hContext, hDevice, pUSMDesc, size, align, ppMem );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2613,6 +2622,36 @@ urUSMGetMemAllocInfo(
         return UR_RESULT_ERROR_UNINITIALIZED;
 
     return pfnGetMemAllocInfo( hContext, pMem, propName, propValueSize, pPropValue, pPropValueSizeRet );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Create USM memory pool
+/// 
+/// @returns
+///     - ::UR_RESULT_SUCCESS
+///     - ::UR_RESULT_ERROR_UNINITIALIZED
+///     - ::UR_RESULT_ERROR_DEVICE_LOST
+///     - ::UR_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `NULL == hContext`
+///     - ::UR_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `NULL == pPoolDesc`
+///         + `NULL == ppPool`
+///     - ::UR_RESULT_ERROR_INVALID_ENUMERATION
+///         + `0x1f < pPoolDesc->flags`
+///     - ::UR_RESULT_INVALID_VALUE
+///     - ::UR_RESULT_ERROR_OUT_OF_HOST_MEMORY
+ur_result_t UR_APICALL
+urUSMUSMPoolCreate(
+    ur_context_handle_t hContext,                   ///< [in] handle of the context object
+    ur_usm_pool_desc_t* pPoolDesc,                  ///< [in] pointer to USM pool descriptor
+    void** ppPool                                   ///< [out] pointer to USM memory pool
+    )
+{
+    auto pfnUSMPoolCreate = ur_lib::context->urDdiTable.USM.pfnUSMPoolCreate;
+    if( nullptr == pfnUSMPoolCreate )
+        return UR_RESULT_ERROR_UNINITIALIZED;
+
+    return pfnUSMPoolCreate( hContext, pPoolDesc, ppPool );
 }
 
 ///////////////////////////////////////////////////////////////////////////////

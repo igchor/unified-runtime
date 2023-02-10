@@ -2725,7 +2725,7 @@ namespace loader
     __urdlllocal ur_result_t UR_APICALL
     urUSMHostAlloc(
         ur_context_handle_t hContext,                   ///< [in] handle of the context object
-        ur_usm_mem_flags_t* pUSMFlag,                   ///< [in] USM memory allocation flags
+        ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
         size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
         uint32_t align,                                 ///< [in] alignment of the USM memory object
         void** ppMem                                    ///< [out] pointer to USM host memory object
@@ -2743,7 +2743,7 @@ namespace loader
         hContext = reinterpret_cast<ur_context_object_t*>( hContext )->handle;
 
         // forward to device-platform
-        result = pfnHostAlloc( hContext, pUSMFlag, size, align, ppMem );
+        result = pfnHostAlloc( hContext, pUSMDesc, size, align, ppMem );
 
         return result;
     }
@@ -2754,7 +2754,7 @@ namespace loader
     urUSMDeviceAlloc(
         ur_context_handle_t hContext,                   ///< [in] handle of the context object
         ur_device_handle_t hDevice,                     ///< [in] handle of the device object
-        ur_usm_mem_flags_t* pUSMProp,                   ///< [in] USM memory properties
+        ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
         size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
         uint32_t align,                                 ///< [in] alignment of the USM memory object
         void** ppMem                                    ///< [out] pointer to USM device memory object
@@ -2775,7 +2775,7 @@ namespace loader
         hDevice = reinterpret_cast<ur_device_object_t*>( hDevice )->handle;
 
         // forward to device-platform
-        result = pfnDeviceAlloc( hContext, hDevice, pUSMProp, size, align, ppMem );
+        result = pfnDeviceAlloc( hContext, hDevice, pUSMDesc, size, align, ppMem );
 
         return result;
     }
@@ -2786,7 +2786,7 @@ namespace loader
     urUSMSharedAlloc(
         ur_context_handle_t hContext,                   ///< [in] handle of the context object
         ur_device_handle_t hDevice,                     ///< [in] handle of the device object
-        ur_usm_mem_flags_t* pUSMProp,                   ///< [in] USM memory properties
+        ur_usm_desc_t* pUSMDesc,                        ///< [in] USM memory allocation descriptor
         size_t size,                                    ///< [in] size in bytes of the USM memory object to be allocated
         uint32_t align,                                 ///< [in] alignment of the USM memory object
         void** ppMem                                    ///< [out] pointer to USM shared memory object
@@ -2807,7 +2807,7 @@ namespace loader
         hDevice = reinterpret_cast<ur_device_object_t*>( hDevice )->handle;
 
         // forward to device-platform
-        result = pfnSharedAlloc( hContext, hDevice, pUSMProp, size, align, ppMem );
+        result = pfnSharedAlloc( hContext, hDevice, pUSMDesc, size, align, ppMem );
 
         return result;
     }
@@ -2862,6 +2862,32 @@ namespace loader
 
         // forward to device-platform
         result = pfnGetMemAllocInfo( hContext, pMem, propName, propValueSize, pPropValue, pPropValueSizeRet );
+
+        return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////
+    /// @brief Intercept function for urUSMUSMPoolCreate
+    __urdlllocal ur_result_t UR_APICALL
+    urUSMUSMPoolCreate(
+        ur_context_handle_t hContext,                   ///< [in] handle of the context object
+        ur_usm_pool_desc_t* pPoolDesc,                  ///< [in] pointer to USM pool descriptor
+        void** ppPool                                   ///< [out] pointer to USM memory pool
+        )
+    {
+        ur_result_t result = UR_RESULT_SUCCESS;
+
+        // extract platform's function pointer table
+        auto dditable = reinterpret_cast<ur_context_object_t*>( hContext )->dditable;
+        auto pfnUSMPoolCreate = dditable->ur.USM.pfnUSMPoolCreate;
+        if( nullptr == pfnUSMPoolCreate )
+            return UR_RESULT_ERROR_UNINITIALIZED;
+
+        // convert loader handle to platform handle
+        hContext = reinterpret_cast<ur_context_object_t*>( hContext )->handle;
+
+        // forward to device-platform
+        result = pfnUSMPoolCreate( hContext, pPoolDesc, ppPool );
 
         return result;
     }
@@ -5258,6 +5284,7 @@ urGetUSMProcAddrTable(
             pDdiTable->pfnSharedAlloc                              = loader::urUSMSharedAlloc;
             pDdiTable->pfnFree                                     = loader::urUSMFree;
             pDdiTable->pfnGetMemAllocInfo                          = loader::urUSMGetMemAllocInfo;
+            pDdiTable->pfnUSMPoolCreate                            = loader::urUSMUSMPoolCreate;
         }
         else
         {

@@ -267,6 +267,12 @@ name: $x_structure_type_t
 etors:
     - name: IMAGE_DESC
       desc: $x_image_desc_t
+    - name: USM_DESC
+      desc: $x_usm_desc_t
+    - name: USM_POOL_DESC
+      desc: $x_usm_pool_desc_t
+    - name: USM_DISJOINT_POOL_DESC
+      desc: $x_usm_disjoint_pool_desc_t
 --- #--------------------------------------------------------------------------
 type: struct
 desc: "Base for all properties types"
