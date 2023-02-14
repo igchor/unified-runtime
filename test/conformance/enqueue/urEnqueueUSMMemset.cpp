@@ -15,9 +15,10 @@ struct urEnqueueUSMMemsetTest : uur::urQueueTest {
             GTEST_SKIP() << "Device USM is not supported";
         }
 
-        ur_usm_mem_flags_t flags{};
+        ur_usm_desc_t desc{};
+        desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
         ASSERT_SUCCESS(
-            urUSMDeviceAlloc(context, device, &flags, allocation_size, 0,
+            urUSMDeviceAlloc(context, device, &desc, allocation_size, 0,
                              reinterpret_cast<void **>(&device_mem)));
     }
 
@@ -75,7 +76,6 @@ TEST_P(urEnqueueUSMMemsetTest, InvalidNullPtr) {
 }
 
 TEST_P(urEnqueueUSMMemsetTest, InvalidNullPtrEventWaitList) {
-
     ASSERT_EQ_RESULT(
         UR_RESULT_ERROR_INVALID_EVENT_WAIT_LIST,
         urEnqueueUSMMemset(queue, device_mem, memset_value, sizeof(int), 1, nullptr,

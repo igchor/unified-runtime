@@ -8,8 +8,9 @@ UUR_INSTANTIATE_DEVICE_TEST_SUITE_P(urUSMDeviceAllocTest);
 
 TEST_P(urUSMDeviceAllocTest, Success) {
     void *ptr = nullptr;
-    ur_usm_mem_flags_t flags;
-    ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, &flags, sizeof(int), 0, &ptr));
+    ur_usm_desc_t desc = {};
+    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
+    ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, &desc, sizeof(int), 0, &ptr));
     ASSERT_NE(ptr, nullptr);
 
     ur_event_handle_t event = nullptr;
@@ -24,14 +25,16 @@ TEST_P(urUSMDeviceAllocTest, Success) {
 
 TEST_P(urUSMDeviceAllocTest, InvalidNullHandleContext) {
     void *ptr = nullptr;
-    ur_usm_mem_flags_t flags;
-    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_HANDLE, urUSMDeviceAlloc(nullptr, device, &flags, sizeof(int), 0, &ptr));
+    ur_usm_desc_t desc = {};
+    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
+    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_HANDLE, urUSMDeviceAlloc(nullptr, device, &desc, sizeof(int), 0, &ptr));
 }
 
 TEST_P(urUSMDeviceAllocTest, InvalidNullHandleDevice) {
-    ur_usm_mem_flags_t flags;
+    ur_usm_desc_t desc = {};
+    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
     void *ptr = nullptr;
-    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_DEVICE, urUSMDeviceAlloc(context, nullptr, &flags, sizeof(int), 0, &ptr));
+    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_DEVICE, urUSMDeviceAlloc(context, nullptr, &desc, sizeof(int), 0, &ptr));
 }
 
 TEST_P(urUSMDeviceAllocTest, InvalidNullPtrProps) {
@@ -40,21 +43,24 @@ TEST_P(urUSMDeviceAllocTest, InvalidNullPtrProps) {
 }
 
 TEST_P(urUSMDeviceAllocTest, InvalidNullPtrResult) {
-    ur_usm_mem_flags_t flags;
-    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_POINTER, urUSMDeviceAlloc(context, device, &flags, sizeof(int), 0, nullptr));
+    ur_usm_desc_t desc = {};
+    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
+    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_POINTER, urUSMDeviceAlloc(context, device, &desc, sizeof(int), 0, nullptr));
 }
 
 TEST_P(urUSMDeviceAllocTest, InvalidUSMSize) {
     void *ptr = nullptr;
-    ur_usm_mem_flags_t flags;
+    ur_usm_desc_t desc = {};
+    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
     ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_USM_SIZE,
-                     urUSMDeviceAlloc(context, device, &flags, 13, 0, &ptr));
+                     urUSMDeviceAlloc(context, device, &desc, 13, 0, &ptr));
 }
 
 TEST_P(urUSMDeviceAllocTest, InvalidValueAlignPowerOfTwo) {
     void *ptr = nullptr;
-    ur_usm_mem_flags_t flags;
+    ur_usm_desc_t desc = {};
+    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
     ASSERT_EQ_RESULT(
         UR_RESULT_ERROR_INVALID_VALUE,
-        urUSMDeviceAlloc(context, device, &flags, sizeof(int), 1, &ptr));
+        urUSMDeviceAlloc(context, device, &desc, sizeof(int), 1, &ptr));
 }

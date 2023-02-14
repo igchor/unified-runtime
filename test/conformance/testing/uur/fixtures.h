@@ -312,8 +312,9 @@ struct urMemBufferQueueTest : urQueueTest {
 struct urUSMDeviceAllocTest : urQueueTest {
     void SetUp() override {
         UUR_RETURN_ON_FATAL_FAILURE(uur::urQueueTest::SetUp());
-        ur_usm_mem_flags_t flags;
-        ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, &flags, sizeof(int), 0, &ptr));
+        ur_usm_desc_t desc = {};
+        desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
+        ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, &desc, sizeof(int), 0, &ptr));
         ur_event_handle_t event = nullptr;
         ASSERT_SUCCESS(
             urEnqueueUSMMemset(queue, ptr, 0, sizeof(int), 0, nullptr, &event));
@@ -335,8 +336,9 @@ struct urUSMDeviceAllocTestWithParam : urQueueTestWithParam<T> {
 
     void SetUp() override {
         UUR_RETURN_ON_FATAL_FAILURE(uur::urQueueTestWithParam<T>::SetUp());
-        ur_usm_mem_flags_t flags;
-        ASSERT_SUCCESS(urUSMDeviceAlloc(this->context, this->device, &flags, sizeof(int), 0, &ptr));
+        ur_usm_desc_t desc = {};
+        desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
+        ASSERT_SUCCESS(urUSMDeviceAlloc(this->context, this->device, &desc, sizeof(int), 0, &ptr));
         ur_event_handle_t event = nullptr;
         ASSERT_SUCCESS(urEnqueueUSMMemset(this->queue, ptr, 0, sizeof(int), 0,
                                           nullptr, &event));
