@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <tuple>
 
 /* for compatibility with non-clang compilers */
 #if defined(__has_feature)
@@ -113,6 +114,20 @@ inline std::size_t combine_hashes(std::size_t seed) {
 template <typename T, typename... Args>
 inline std::size_t combine_hashes(std::size_t seed, const T &v, Args... args) {
     return combine_hashes(seed ^ std::hash<T>{}(v), args...);
+}
+
+template <typename Class, typename... Members>
+inline constexpr bool members_equal(const Class& lhs, const Class &rhs, std::tuple<Members Class::*...> members) {
+    return std::apply([&lhs, &rhs](Members Class::*... members){
+        return std::forward_as_tuple(lhs.*members...) == std::forward_as_tuple(rhs.*members...);
+    }, members);
+}
+
+template <typename Class, typename... Members>
+inline constexpr std::size_t members_hashed(const Class& c, std::size_t seed, std::tuple<Members Class::*...> members) {
+    return std::apply([&c, &seed](Members Class::*... members){
+        return combine_hashes(seed, c.*members...);
+    }, members);
 }
 
 #endif /* UR_UTIL_H */

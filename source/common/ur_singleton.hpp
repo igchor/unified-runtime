@@ -13,11 +13,15 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "usm_pool_manager.hpp"
+
 //////////////////////////////////////////////////////////////////////////
 /// a abstract factory for creation of singleton objects
 template <typename singleton_tn, typename key_tn>
 class singleton_factory_t {
   protected:
+    usm::PerContextDeviceTypePoolManager pp;
+
     using singleton_t = singleton_tn;
     using key_t = typename std::conditional<std::is_pointer<key_tn>::value, size_t, key_tn>::type;
 
