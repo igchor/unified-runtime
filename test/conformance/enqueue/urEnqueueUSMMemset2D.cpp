@@ -22,9 +22,7 @@ struct urEnqueueUSMMemset2DTestWithParam
             GTEST_SKIP() << "Device USM is not supported";
         }
 
-        ur_usm_desc_t desc{};
-        desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
-        ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, &desc, num_elements, 0,
+        ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, nullptr, nullptr, num_elements, 0,
                                         reinterpret_cast<void **>(&ptr)));
     }
 
@@ -107,9 +105,7 @@ struct urEnqueueUSMMemset2DNegativeTest : uur::urQueueTest {
             GTEST_SKIP() << "Device USM is not supported";
         }
 
-        ur_usm_desc_t desc{};
-        desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
-        ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, &desc, num_elements, 0,
+        ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, nullptr, nullptr, num_elements, 0,
                                         reinterpret_cast<void **>(&ptr)));
     }
 

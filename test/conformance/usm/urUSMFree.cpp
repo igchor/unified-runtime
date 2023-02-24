@@ -8,9 +8,7 @@ UUR_INSTANTIATE_DEVICE_TEST_SUITE_P(urUSMFreeTest);
 
 TEST_P(urUSMFreeTest, Success) {
     void *ptr = nullptr;
-    ur_usm_desc_t desc = {};
-    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
-    ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, &desc, sizeof(int), 0, &ptr));
+    ASSERT_SUCCESS(urUSMDeviceAlloc(context, device, nullptr, nullptr, sizeof(int), 0, &ptr));
 
     ur_event_handle_t event = nullptr;
     ASSERT_SUCCESS(

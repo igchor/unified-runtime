@@ -71,6 +71,11 @@ etors:
     - name: DEVICE
       desc: "Memory allocation device info"
 --- #--------------------------------------------------------------------------
+type: handle
+desc: "Handle of USM pool"
+class: $xUSM
+name: "$x_usm_pool_handle_t"
+--- #--------------------------------------------------------------------------
 type: struct
 desc: "USM allocation descriptor type"
 class: $xUSM
@@ -83,9 +88,6 @@ members:
     - type: $x_mem_advice_t
       name: hints
       desc: "[in] Memory advice hints"
-    - type: "void*"
-      name: pool
-      desc: "[in][optional] Pointer to a pool created using urUSMPoolCreate"
 --- #--------------------------------------------------------------------------
 type: struct
 desc: "USM pool descriptor type"
@@ -134,6 +136,9 @@ params:
     - type: $x_usm_desc_t*
       name: pUSMDesc
       desc: "[in][optional] USM memory allocation descriptor"
+    - type: $x_usm_pool_handle_t
+      name: pool
+      desc: "[in][optional] Pointer to a pool created using urUSMPoolCreate"
     - type: "size_t"
       name: size
       desc: "[in] size in bytes of the USM memory object to be allocated"
@@ -171,6 +176,9 @@ params:
     - type: $x_usm_desc_t*
       name: pUSMDesc
       desc: "[in][optional] USM memory allocation descriptor"
+    - type: $x_usm_pool_handle_t
+      name: pool
+      desc: "[in][optional] Pointer to a pool created using urUSMPoolCreate"
     - type: "size_t"
       name: size
       desc: "[in] size in bytes of the USM memory object to be allocated"
@@ -208,6 +216,9 @@ params:
     - type: $x_usm_desc_t*
       name: pUSMDesc
       desc: "[in][optional] USM memory allocation descriptor"
+    - type: $x_usm_pool_handle_t
+      name: pool
+      desc: "[in][optional] Pointer to a pool created using urUSMPoolCreate"
     - type: "size_t"
       name: size
       desc: "[in] size in bytes of the USM memory object to be allocated"
@@ -284,7 +295,7 @@ params:
     - type: $x_usm_pool_desc_t*
       name: pPoolDesc
       desc: "[in] pointer to USM pool descriptor. Can be chained with $x_usm_pool_limits_desc_t"
-    - type: void**
+    - type: $x_usm_pool_handle_t*
       name: ppPool
       desc: "[out] pointer to USM memory pool"
 returns:
@@ -303,7 +314,7 @@ params:
     - type: $x_context_handle_t
       name: hContext
       desc: "[in] handle of the context object"
-    - type: void*
+    - type: $x_usm_pool_handle_t
       name: pPool
       desc: "[in] pointer to USM memory pool"
 returns:

@@ -1118,6 +1118,7 @@ typedef ur_result_t(UR_APICALL *ur_pfnGetEnqueueProcAddrTable_t)(
 typedef ur_result_t(UR_APICALL *ur_pfnUSMHostAlloc_t)(
     ur_context_handle_t,
     ur_usm_desc_t *,
+    ur_usm_pool_handle_t,
     size_t,
     uint32_t,
     void **);
@@ -1128,6 +1129,7 @@ typedef ur_result_t(UR_APICALL *ur_pfnUSMDeviceAlloc_t)(
     ur_context_handle_t,
     ur_device_handle_t,
     ur_usm_desc_t *,
+    ur_usm_pool_handle_t,
     size_t,
     uint32_t,
     void **);
@@ -1138,6 +1140,7 @@ typedef ur_result_t(UR_APICALL *ur_pfnUSMSharedAlloc_t)(
     ur_context_handle_t,
     ur_device_handle_t,
     ur_usm_desc_t *,
+    ur_usm_pool_handle_t,
     size_t,
     uint32_t,
     void **);
@@ -1163,13 +1166,13 @@ typedef ur_result_t(UR_APICALL *ur_pfnUSMGetMemAllocInfo_t)(
 typedef ur_result_t(UR_APICALL *ur_pfnUSMPoolCreate_t)(
     ur_context_handle_t,
     ur_usm_pool_desc_t *,
-    void **);
+    ur_usm_pool_handle_t *);
 
 ///////////////////////////////////////////////////////////////////////////////
 /// @brief Function-pointer for urUSMPoolDestroy
 typedef ur_result_t(UR_APICALL *ur_pfnUSMPoolDestroy_t)(
     ur_context_handle_t,
-    void *);
+    ur_usm_pool_handle_t);
 
 ///////////////////////////////////////////////////////////////////////////////
 /// @brief Table of USM functions pointers

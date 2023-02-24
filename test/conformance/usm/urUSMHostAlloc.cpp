@@ -16,9 +16,7 @@ TEST_P(urUSMHostAllocTest, Success) {
     }
 
     int *ptr = nullptr;
-    ur_usm_desc_t desc = {};
-    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
-    ASSERT_SUCCESS(urUSMHostAlloc(context, &desc, sizeof(int), 0, reinterpret_cast<void **>(&ptr)));
+    ASSERT_SUCCESS(urUSMHostAlloc(context, nullptr, nullptr, sizeof(int), 0, reinterpret_cast<void **>(&ptr)));
     ASSERT_NE(ptr, nullptr);
 
     // Set 0
@@ -45,35 +43,22 @@ TEST_P(urUSMHostAllocTest, Success) {
 }
 
 TEST_P(urUSMHostAllocTest, InvalidNullHandleContext) {
-    ur_usm_desc_t desc = {};
-    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
     void *ptr = nullptr;
-    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_HANDLE, urUSMHostAlloc(nullptr, &desc, sizeof(int), 0, &ptr));
-}
-
-TEST_P(urUSMHostAllocTest, InvalidNullPtrFlags) {
-    void *ptr = nullptr;
-    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_POINTER, urUSMHostAlloc(context, nullptr, sizeof(int), 0, &ptr));
+    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_HANDLE, urUSMHostAlloc(nullptr, nullptr, nullptr, sizeof(int), 0, &ptr));
 }
 
 TEST_P(urUSMHostAllocTest, InvalidNullPtrMem) {
-    ur_usm_desc_t desc = {};
-    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
-    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_POINTER, urUSMHostAlloc(context, &desc, sizeof(int), 0, nullptr));
+    ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_POINTER, urUSMHostAlloc(context, nullptr, nullptr, sizeof(int), 0, nullptr));
 }
 
 TEST_P(urUSMHostAllocTest, InvalidUSMSize) {
     void *ptr = nullptr;
-    ur_usm_desc_t desc = {};
-    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
     ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_USM_SIZE,
-                     urUSMHostAlloc(context, &desc, 13, 0, &ptr));
+                     urUSMHostAlloc(context, nullptr, nullptr, 13, 0, &ptr));
 }
 
 TEST_P(urUSMHostAllocTest, InvalidValueAlignPowerOfTwo) {
     void *ptr = nullptr;
-    ur_usm_desc_t desc = {};
-    desc.stype = UR_STRUCTURE_TYPE_USM_DESC;
     ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_VALUE,
-                     urUSMHostAlloc(context, &desc, sizeof(int), 1, &ptr));
+                     urUSMHostAlloc(context, nullptr, nullptr, sizeof(int), 1, &ptr));
 }

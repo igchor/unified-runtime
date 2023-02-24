@@ -2343,6 +2343,7 @@ __urdlllocal ur_result_t UR_APICALL
 urUSMHostAlloc(
     ur_context_handle_t hContext, ///< [in] handle of the context object
     ur_usm_desc_t *pUSMDesc,      ///< [in][optional] USM memory allocation descriptor
+    ur_usm_pool_handle_t pool,    ///< [in][optional] Pointer to a pool created using urUSMPoolCreate
     size_t size,                  ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,               ///< [in] alignment of the USM memory object
     void **ppMem                  ///< [out] pointer to USM host memory object
@@ -2363,7 +2364,7 @@ urUSMHostAlloc(
         }
     }
 
-    return pfnHostAlloc(hContext, pUSMDesc, size, align, ppMem);
+    return pfnHostAlloc(hContext, pUSMDesc, pool, size, align, ppMem);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2373,6 +2374,7 @@ urUSMDeviceAlloc(
     ur_context_handle_t hContext, ///< [in] handle of the context object
     ur_device_handle_t hDevice,   ///< [in] handle of the device object
     ur_usm_desc_t *pUSMDesc,      ///< [in][optional] USM memory allocation descriptor
+    ur_usm_pool_handle_t pool,    ///< [in][optional] Pointer to a pool created using urUSMPoolCreate
     size_t size,                  ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,               ///< [in] alignment of the USM memory object
     void **ppMem                  ///< [out] pointer to USM device memory object
@@ -2397,7 +2399,7 @@ urUSMDeviceAlloc(
         }
     }
 
-    return pfnDeviceAlloc(hContext, hDevice, pUSMDesc, size, align, ppMem);
+    return pfnDeviceAlloc(hContext, hDevice, pUSMDesc, pool, size, align, ppMem);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2407,6 +2409,7 @@ urUSMSharedAlloc(
     ur_context_handle_t hContext, ///< [in] handle of the context object
     ur_device_handle_t hDevice,   ///< [in] handle of the device object
     ur_usm_desc_t *pUSMDesc,      ///< [in][optional] USM memory allocation descriptor
+    ur_usm_pool_handle_t pool,    ///< [in][optional] Pointer to a pool created using urUSMPoolCreate
     size_t size,                  ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,               ///< [in] alignment of the USM memory object
     void **ppMem                  ///< [out] pointer to USM shared memory object
@@ -2431,7 +2434,7 @@ urUSMSharedAlloc(
         }
     }
 
-    return pfnSharedAlloc(hContext, hDevice, pUSMDesc, size, align, ppMem);
+    return pfnSharedAlloc(hContext, hDevice, pUSMDesc, pool, size, align, ppMem);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2501,7 +2504,7 @@ urUSMPoolCreate(
     ur_context_handle_t hContext,  ///< [in] handle of the context object
     ur_usm_pool_desc_t *pPoolDesc, ///< [in] pointer to USM pool descriptor. Can be chained with
                                    ///< ::ur_usm_pool_limits_desc_t
-    void **ppPool                  ///< [out] pointer to USM memory pool
+    ur_usm_pool_handle_t *ppPool   ///< [out] pointer to USM memory pool
 ) {
     auto pfnPoolCreate = context.urDdiTable.USM.pfnPoolCreate;
 
@@ -2535,7 +2538,7 @@ urUSMPoolCreate(
 __urdlllocal ur_result_t UR_APICALL
 urUSMPoolDestroy(
     ur_context_handle_t hContext, ///< [in] handle of the context object
-    void *pPool                   ///< [in] pointer to USM memory pool
+    ur_usm_pool_handle_t pPool    ///< [in] pointer to USM memory pool
 ) {
     auto pfnPoolDestroy = context.urDdiTable.USM.pfnPoolDestroy;
 
@@ -2549,7 +2552,7 @@ urUSMPoolDestroy(
         }
 
         if (NULL == pPool) {
-            return UR_RESULT_ERROR_INVALID_NULL_POINTER;
+            return UR_RESULT_ERROR_INVALID_NULL_HANDLE;
         }
     }
 

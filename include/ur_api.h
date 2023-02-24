@@ -2939,13 +2939,16 @@ typedef enum ur_usm_alloc_info_t {
 } ur_usm_alloc_info_t;
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Handle of USM pool
+typedef struct ur_usm_pool_handle_t_ *ur_usm_pool_handle_t;
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief USM allocation descriptor type
 typedef struct ur_usm_desc_t {
     ur_structure_type_t stype; ///< [in] type of this structure
     const void *pNext;         ///< [in][optional] pointer to extension-specific structure
     ur_usm_mem_flags_t flags;  ///< [in] memory allocation flags
     ur_mem_advice_t hints;     ///< [in] Memory advice hints
-    void *pool;                ///< [in][optional] Pointer to a pool created using urUSMPoolCreate
 
 } ur_usm_desc_t;
 
@@ -3000,6 +3003,7 @@ UR_APIEXPORT ur_result_t UR_APICALL
 urUSMHostAlloc(
     ur_context_handle_t hContext, ///< [in] handle of the context object
     ur_usm_desc_t *pUSMDesc,      ///< [in][optional] USM memory allocation descriptor
+    ur_usm_pool_handle_t pool,    ///< [in][optional] Pointer to a pool created using urUSMPoolCreate
     size_t size,                  ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,               ///< [in] alignment of the USM memory object
     void **ppMem                  ///< [out] pointer to USM host memory object
@@ -3037,6 +3041,7 @@ urUSMDeviceAlloc(
     ur_context_handle_t hContext, ///< [in] handle of the context object
     ur_device_handle_t hDevice,   ///< [in] handle of the device object
     ur_usm_desc_t *pUSMDesc,      ///< [in][optional] USM memory allocation descriptor
+    ur_usm_pool_handle_t pool,    ///< [in][optional] Pointer to a pool created using urUSMPoolCreate
     size_t size,                  ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,               ///< [in] alignment of the USM memory object
     void **ppMem                  ///< [out] pointer to USM device memory object
@@ -3074,6 +3079,7 @@ urUSMSharedAlloc(
     ur_context_handle_t hContext, ///< [in] handle of the context object
     ur_device_handle_t hDevice,   ///< [in] handle of the device object
     ur_usm_desc_t *pUSMDesc,      ///< [in][optional] USM memory allocation descriptor
+    ur_usm_pool_handle_t pool,    ///< [in][optional] Pointer to a pool created using urUSMPoolCreate
     size_t size,                  ///< [in] size in bytes of the USM memory object to be allocated
     uint32_t align,               ///< [in] alignment of the USM memory object
     void **ppMem                  ///< [out] pointer to USM shared memory object
@@ -3150,7 +3156,7 @@ urUSMPoolCreate(
     ur_context_handle_t hContext,  ///< [in] handle of the context object
     ur_usm_pool_desc_t *pPoolDesc, ///< [in] pointer to USM pool descriptor. Can be chained with
                                    ///< ::ur_usm_pool_limits_desc_t
-    void **ppPool                  ///< [out] pointer to USM memory pool
+    ur_usm_pool_handle_t *ppPool   ///< [out] pointer to USM memory pool
 );
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -3167,13 +3173,12 @@ urUSMPoolCreate(
 ///     - ::UR_RESULT_ERROR_DEVICE_LOST
 ///     - ::UR_RESULT_ERROR_INVALID_NULL_HANDLE
 ///         + `NULL == hContext`
-///     - ::UR_RESULT_ERROR_INVALID_NULL_POINTER
 ///         + `NULL == pPool`
 ///     - ::UR_RESULT_ERROR_INVALID_VALUE
 UR_APIEXPORT ur_result_t UR_APICALL
 urUSMPoolDestroy(
     ur_context_handle_t hContext, ///< [in] handle of the context object
-    void *pPool                   ///< [in] pointer to USM memory pool
+    ur_usm_pool_handle_t pPool    ///< [in] pointer to USM memory pool
 );
 
 #if !defined(__GNUC__)
@@ -7168,6 +7173,7 @@ typedef struct ur_enqueue_callbacks_t {
 typedef struct ur_usm_host_alloc_params_t {
     ur_context_handle_t *phContext;
     ur_usm_desc_t **ppUSMDesc;
+    ur_usm_pool_handle_t *ppool;
     size_t *psize;
     uint32_t *palign;
     void ***pppMem;
@@ -7193,6 +7199,7 @@ typedef struct ur_usm_device_alloc_params_t {
     ur_context_handle_t *phContext;
     ur_device_handle_t *phDevice;
     ur_usm_desc_t **ppUSMDesc;
+    ur_usm_pool_handle_t *ppool;
     size_t *psize;
     uint32_t *palign;
     void ***pppMem;
@@ -7218,6 +7225,7 @@ typedef struct ur_usm_shared_alloc_params_t {
     ur_context_handle_t *phContext;
     ur_device_handle_t *phDevice;
     ur_usm_desc_t **ppUSMDesc;
+    ur_usm_pool_handle_t *ppool;
     size_t *psize;
     uint32_t *palign;
     void ***pppMem;
@@ -7288,7 +7296,7 @@ typedef void(UR_APICALL *ur_pfnUSMGetMemAllocInfoCb_t)(
 typedef struct ur_usm_pool_create_params_t {
     ur_context_handle_t *phContext;
     ur_usm_pool_desc_t **ppPoolDesc;
-    void ***pppPool;
+    ur_usm_pool_handle_t **pppPool;
 } ur_usm_pool_create_params_t;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -7309,7 +7317,7 @@ typedef void(UR_APICALL *ur_pfnUSMPoolCreateCb_t)(
 ///     allowing the callback the ability to modify the parameter's value
 typedef struct ur_usm_pool_destroy_params_t {
     ur_context_handle_t *phContext;
-    void **ppPool;
+    ur_usm_pool_handle_t *ppPool;
 } ur_usm_pool_destroy_params_t;
 
 ///////////////////////////////////////////////////////////////////////////////
