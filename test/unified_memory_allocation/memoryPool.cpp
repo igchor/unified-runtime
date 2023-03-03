@@ -3,6 +3,10 @@
 
 #include "helpers.h"
 #include "pool.h"
+#include "provider.h"
+
+#include "proxyPool.hpp"
+#include "uma_helpers.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -44,4 +48,29 @@ TEST_F(umaTest, memoryPoolTrace) {
     ASSERT_EQ(ret, UMA_RESULT_SUCCESS);
     ASSERT_EQ(calls["get_last_result"], 1);
     ASSERT_EQ(calls.size(), ++call_count);
+}
+
+TEST_F(umaTest, memoryPoolWithMemoryTracking) {
+    static constexpr size_t size = 1024;
+
+    uma_memory_tracker_handle_t tracker;
+    auto ret = umaMemoryTrackerCreate(&tracker);
+    ASSERT_EQ(ret, UMA_RESULT_SUCCESS);
+
+    auto poolRet = uma::poolMakeUnique<uma_test::proxy_pool>(mallocProviderCreate(), tracker);
+    ASSERT_EQ(poolRet.first, UMA_RESULT_SUCCESS);
+    ASSERT_NE(poolRet.second, nullptr);
+    auto &pool = poolRet.second;
+
+    auto *ptr = umaPoolMalloc(pool.get(), size);
+    ASSERT_NE(ptr, nullptr);
+
+    auto foundPool = umaMemoryTrackerGetPool(tracker, ptr);
+    ASSERT_EQ(foundPool, pool.get());
+
+    foundPool = umaMemoryTrackerGetPool(tracker, reinterpret_cast<void *>(reinterpret_cast<char *>(ptr) + size - 1));
+    ASSERT_EQ(foundPool, pool.get());
+
+    auto nonExistentPool = umaMemoryTrackerGetPool(tracker, reinterpret_cast<void *>(reinterpret_cast<char *>(ptr) + size));
+    ASSERT_EQ(nonExistentPool, nullptr);
 }

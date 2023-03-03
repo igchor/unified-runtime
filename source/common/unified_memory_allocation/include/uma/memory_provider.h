@@ -11,6 +11,7 @@
 
 #include <uma/base.h>
 #include <uma/memory_provider_ops.h>
+#include <uma/memory_tracker.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,6 +75,17 @@ enum uma_result_t umaMemoryProviderFree(uma_memory_provider_handle_t hProvider, 
 ///         a warning. Any other result code returned indicates that the
 ///         adapter specific result is an error.
 enum uma_result_t umaMemoryProviderGetLastResult(uma_memory_provider_handle_t hProvider, const char **ppMessage);
+
+///
+/// \brief Create a proxy memory provider that associates each allocation with a pool
+///        and forwards calls to the upstream provider.
+/// \param hUpstream all calls are forwarded to this provider
+/// \param hTracker each allocation/deallocation requests is tracked using this tracker
+/// \param pool pool to be associated with all allocations
+/// \param [out] returns instance of tracking provider
+enum uma_result_t umaTrackingMemoryProviderCreate(uma_memory_provider_handle_t hUpstream,
+                                                  uma_memory_tracker_handle_t hTracker,
+                                                  void *pool, uma_memory_provider_handle_t *hTrackingProvider);
 
 #ifdef __cplusplus
 }
