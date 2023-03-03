@@ -56,19 +56,9 @@ struct uma_memory_tracker_t {
 
 extern "C" {
 
-enum uma_result_t umaMemoryTrackerCreate(uma_memory_tracker_handle_t *hTracker) {
-    try {
-        *hTracker = new uma_memory_tracker_t;
-        return UMA_RESULT_SUCCESS;
-    } catch (std::bad_alloc &) {
-        return UMA_RESULT_ERROR_OUT_OF_HOST_MEMORY;
-    } catch (...) {
-        return UMA_RESULT_ERROR_UNKNOWN;
-    }
-}
-
-void umaMemoryTrackerDestroy(uma_memory_tracker_handle_t hTracker) {
-    delete hTracker;
+uma_memory_tracker_handle_t umaMemoryTrackerGet() {
+    static uma_memory_tracker_t tracker;
+    return &tracker;
 }
 
 void *umaMemoryTrackerGetPool(uma_memory_tracker_handle_t hTracker, const void *ptr) {

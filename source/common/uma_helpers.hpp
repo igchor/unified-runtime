@@ -13,7 +13,6 @@
 #include <uma/memory_pool_ops.h>
 #include <uma/memory_provider.h>
 #include <uma/memory_provider_ops.h>
-#include <uma/memory_tracker.h>
 
 #include <stdexcept>
 #include <tuple>

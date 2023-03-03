@@ -6,6 +6,7 @@
  *
  */
 
+#include "memory_tracker_internal.h"
 #include <uma/memory_pool.h>
 
 #include <assert.h>
@@ -69,4 +70,8 @@ void umaPoolFree(uma_memory_pool_handle_t hPool, void *ptr) {
 enum uma_result_t
 umaPoolGetLastResult(uma_memory_pool_handle_t hPool, const char **ppMessage) {
     return hPool->ops.get_last_result(hPool->priv, ppMessage);
+}
+
+uma_memory_pool_handle_t umaPoolByPtr(const void *ptr) {
+    return umaMemoryTrackerGetPool(umaMemoryTrackerGet(), ptr);
 }

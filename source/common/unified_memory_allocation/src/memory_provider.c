@@ -128,11 +128,10 @@ static struct uma_memory_provider_ops_t umaTrackingMemoryProviderOps() {
 }
 
 enum uma_result_t umaTrackingMemoryProviderCreate(uma_memory_provider_handle_t hUpstream,
-                                                  uma_memory_tracker_handle_t hTracker,
                                                   void *pool, uma_memory_provider_handle_t *hTrackingProvider) {
     uma_tracking_memory_provider_t params = {
         .hUpstream = hUpstream,
-        .hTracker = hTracker,
+        .hTracker = umaMemoryTrackerGet(),
         .pool = pool};
 
     struct uma_memory_provider_ops_t ops = umaTrackingMemoryProviderOps();

@@ -108,6 +108,13 @@ void umaPoolFree(uma_memory_pool_handle_t hPool, void *ptr);
 ///         returned indicates that the adapter specific result is an error.
 enum uma_result_t umaPoolGetLastResult(uma_memory_pool_handle_t hPool, const char **ppMessage);
 
+///
+/// \brief returns memory pool associated with a given ptr. Memory pointed to by ptr
+///        must have been tracked using provider obtained by calling umaTrackingMemoryProviderCreate
+/// \param ptr pointer to memory belonging to memory pool
+/// \return handle to memory pool that contains ptr
+uma_memory_pool_handle_t umaPoolByPtr(const void *ptr);
+
 #ifdef __cplusplus
 }
 #endif

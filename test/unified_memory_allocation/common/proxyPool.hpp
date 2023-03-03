@@ -11,15 +11,14 @@
 
 #include <uma/base.h>
 #include <uma/memory_provider.h>
-#include <uma/memory_tracker.h>
 
 #include "helpers.h"
 
 namespace uma_test {
 
 struct proxy_pool {
-    proxy_pool(uma_memory_provider_handle_t hProvider, uma_memory_tracker_handle_t hTracker, void *pool) {
-        auto ret = umaTrackingMemoryProviderCreate(hProvider, hTracker, pool, &this->hProvider);
+    proxy_pool(uma_memory_provider_handle_t hProvider, void *pool) {
+        auto ret = umaTrackingMemoryProviderCreate(hProvider, pool, &this->hProvider);
         EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
     }
 
