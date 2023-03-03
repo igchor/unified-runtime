@@ -33,7 +33,7 @@ static enum uma_result_t nullFree(void *provider, void *ptr, size_t size) {
     return UMA_RESULT_SUCCESS;
 }
 
-enum uma_result_t nullGetLastResult(void *provider, const char **ppMsg) {
+static enum uma_result_t nullGetLastResult(void *provider, const char **ppMsg) {
     (void)provider;
     (void)ppMsg;
     return UMA_RESULT_SUCCESS;
@@ -88,7 +88,7 @@ static enum uma_result_t traceFree(void *provider, void *ptr, size_t size) {
     return umaMemoryProviderFree(traceProvider->hUpstreamProvider, ptr, size);
 }
 
-enum uma_result_t traceGetLastResult(void *provider, const char **ppMsg) {
+static enum uma_result_t traceGetLastResult(void *provider, const char **ppMsg) {
     struct traceParams *traceProvider = (struct traceParams *)provider;
 
     traceProvider->trace("get_last_result");
@@ -110,6 +110,39 @@ uma_memory_provider_handle_t traceProviderCreate(uma_memory_provider_handle_t hU
 
     uma_memory_provider_handle_t hProvider;
     enum uma_result_t ret = umaMemoryProviderCreate(&ops, &params,
+                                                    &hProvider);
+
+    (void)ret; /* silence unused variable warning */
+    assert(ret == UMA_RESULT_SUCCESS);
+    return hProvider;
+}
+
+enum uma_result_t mallocBasedAlloc(void *provider, size_t size, size_t alignment, void **ptr) {
+    (void)provider;
+    (void)alignment;
+
+    *ptr = malloc(size);
+    return *(ptr) ? UMA_RESULT_SUCCESS : UMA_RESULT_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+enum uma_result_t mallocBasedFree(void *provider, void *ptr, size_t size) {
+    (void)provider;
+    (void)size;
+
+    free(ptr);
+    return UMA_RESULT_SUCCESS;
+}
+
+uma_memory_provider_handle_t mallocProviderCreate() {
+    struct uma_memory_provider_ops_t ops = {
+        .version = UMA_VERSION_CURRENT,
+        .initialize = nullInitialize,
+        .finalize = nullFinalize,
+        .alloc = mallocBasedAlloc,
+        .free = mallocBasedFree};
+
+    uma_memory_provider_handle_t hProvider;
+    enum uma_result_t ret = umaMemoryProviderCreate(&ops, NULL,
                                                     &hProvider);
 
     (void)ret; /* silence unused variable warning */

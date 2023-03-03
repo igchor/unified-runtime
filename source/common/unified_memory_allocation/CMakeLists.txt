@@ -4,6 +4,7 @@
 set(UMA_SOURCES
     src/memory_pool.c
     src/memory_provider.c
+    src/memory_tracker.c
 )
 
 if(UMA_BUILD_SHARED_LIBRARY)
