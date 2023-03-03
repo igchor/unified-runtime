@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-/// This structure comprises function pointers used by corresponding  umaPool*
+/// \brief This structure comprises function pointers used by corresponding  umaPool*
 /// calls. Each memory pool implementation should initialize all function
 /// pointers.
 struct uma_memory_pool_ops_t {
@@ -25,11 +25,15 @@ struct uma_memory_pool_ops_t {
 
     ///
     /// \brief Intializes memory pool
+    /// \param providers array of memory provider descriptors, always contains at least one element
+    /// \param numProviders number of elements in the providers array (is always > 0)
     /// \param params pool-specific params
     /// \param pool returns pointer to the pool
     /// \return UMA_RESULT_SUCCESS on success or appropriate error code on
     /// failure
-    enum uma_result_t (*initialize)(void *params, void **pool);
+    enum uma_result_t (*initialize)(
+        struct uma_memory_provider_desc_t *providers, size_t numProviders,
+        void *params, void **pool);
 
     ///
     /// \brief Finalizes memory pool

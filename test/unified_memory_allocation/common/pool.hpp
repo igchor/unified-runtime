@@ -26,7 +26,10 @@ auto wrapPoolUnique(uma_memory_pool_handle_t hPool) {
 }
 
 struct pool_base {
-    uma_result_t initialize() noexcept { return UMA_RESULT_SUCCESS; };
+    uma_result_t initialize(struct uma_memory_provider_desc_t *,
+                            size_t) noexcept {
+        return UMA_RESULT_SUCCESS;
+    };
     void *malloc(size_t size) noexcept { return nullptr; }
     void *calloc(size_t, size_t) noexcept { return nullptr; }
     void *realloc(void *, size_t) noexcept { return nullptr; }
@@ -62,6 +65,47 @@ struct malloc_pool : public pool_base {
 #endif
     }
     void free(void *ptr) noexcept { return ::free(ptr); }
+};
+
+struct proxy_pool : public pool_base {
+    uma_result_t initialize(struct uma_memory_provider_desc_t *providers,
+                            size_t numProviders) noexcept {
+        EXPECT_EQ(numProviders, 1);
+        EXPECT_EQ(providers[0].providerType, UMA_MEMORY_PROVIDER_TYPE_DATA);
+
+        this->provider = providers[0].hProvider;
+        return UMA_RESULT_SUCCESS;
+    }
+    void *malloc(size_t size) noexcept { return aligned_malloc(size, 0); }
+    void *calloc(size_t num, size_t size) noexcept {
+        void *ptr;
+        auto ret = umaMemoryProviderAlloc(provider, num * size, 0, &ptr);
+
+        memset(ptr, 0, num * size);
+
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
+        return ptr;
+    }
+    void *realloc(void *ptr, size_t size) noexcept {
+        // TODO: not supported
+        EXPECT_TRUE(false);
+        return nullptr;
+    }
+    void *aligned_malloc(size_t size, size_t alignment) noexcept {
+        void *ptr;
+        auto ret = umaMemoryProviderAlloc(provider, size, alignment, &ptr);
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
+        return ptr;
+    }
+    size_t malloc_usable_size(void *ptr) noexcept {
+        // TODO: not supported
+        return 0;
+    }
+    void free(void *ptr) noexcept {
+        auto ret = umaMemoryProviderFree(provider, ptr, 0);
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
+    }
+    uma_memory_provider_handle_t provider;
 };
 
 } // namespace uma_test
