@@ -41,7 +41,7 @@ auto memoryProviderMakeUnique(Args &&...args) {
         auto *tuple = reinterpret_cast<decltype(argsTuple) *>(params);
         auto provider = new T;
         *obj = provider;
-        return std::apply(&T::initialize, std::tuple_cat(std::make_tuple(*provider), *tuple));
+        return std::apply(&T::initialize, std::tuple_cat(std::make_tuple(provider), *tuple));
     };
     ops.finalize = [](void *obj) {
         delete reinterpret_cast<T *>(obj);
@@ -71,17 +71,19 @@ auto memoryProviderMakeUnique(Args &&...args) {
 /// forwarded to T::initialize(). All functions of T
 /// should be noexcept.
 template <typename T, typename... Args>
-auto poolMakeUnique(Args &&...args) {
+auto poolMakeUnique(struct uma_memory_provider_desc_t *providers,
+                    size_t numProviders, Args &&...args) {
     uma_memory_pool_ops_t ops;
     auto argsTuple = std::make_tuple(std::forward<Args>(args)...);
-    static_assert(noexcept(std::declval<T>().initialize(std::forward<Args>(args)...)));
+    static_assert(noexcept(std::declval<T>().initialize(providers, numProviders, std::forward<Args>(args)...)));
 
     ops.version = UMA_VERSION_CURRENT;
-    ops.initialize = [](void *params, void **obj) {
+    ops.initialize = [](struct uma_memory_provider_desc_t *providers,
+                        size_t numProviders, void *params, void **obj) {
         auto *tuple = reinterpret_cast<decltype(argsTuple) *>(params);
         auto pool = new T;
         *obj = pool;
-        return std::apply(&T::initialize, std::tuple_cat(std::make_tuple(*pool), *tuple));
+        return std::apply(&T::initialize, std::tuple_cat(std::make_tuple(pool, providers, numProviders), *tuple));
     };
     ops.finalize = [](void *obj) {
         delete reinterpret_cast<T *>(obj);
@@ -112,7 +114,7 @@ auto poolMakeUnique(Args &&...args) {
     };
 
     uma_memory_pool_handle_t hPool = nullptr;
-    auto ret = umaPoolCreate(&ops, &argsTuple, &hPool);
+    auto ret = umaPoolCreate(&ops, providers, numProviders, &argsTuple, &hPool);
     return std::pair<uma_result_t, pool_unique_handle_t>{ret, pool_unique_handle_t(hPool, &umaPoolDestroy)};
 }
 } // namespace uma
