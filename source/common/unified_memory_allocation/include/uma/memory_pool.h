@@ -107,6 +107,12 @@ size_t umaPoolMallocUsableSize(uma_memory_pool_handle_t hPool, void *ptr);
 void umaPoolFree(uma_memory_pool_handle_t hPool, void *ptr);
 
 ///
+/// \brief Frees the memory space pointed by ptr if it belongs to UMA pool, does nothing otherwise
+/// \param ptr pointer to the allocated memory
+///
+void umaFree(void *ptr);
+
+///
 /// \brief Retrieve string representation of the underlying pool specific
 ///        result reported by the last API that returned
 ///        UMA_RESULT_ERROR_POOL_SPECIFIC or NULL ptr (in case of allocation
