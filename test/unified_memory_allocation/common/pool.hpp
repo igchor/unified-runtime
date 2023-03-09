@@ -26,7 +26,7 @@ auto wrapPoolUnique(uma_memory_pool_handle_t hPool) {
 }
 
 struct pool_base {
-    uma_result_t initialize() noexcept {
+    uma_result_t initialize(struct uma_memory_provider_desc_t *, size_t) noexcept {
         return UMA_RESULT_SUCCESS;
     };
     void *malloc(size_t size) noexcept {
@@ -52,21 +52,40 @@ struct pool_base {
 };
 
 struct malloc_pool : public pool_base {
+    uma_result_t initialize(struct uma_memory_provider_desc_t *providers, size_t numProviders) noexcept {
+        EXPECT_EQ(numProviders, 1);
+        EXPECT_EQ(providers[0].providerType, UMA_MEMORY_PROVIDER_TYPE_TRACKER);
+
+        this->tracker = providers[0].hProvider;
+        return UMA_RESULT_SUCCESS;
+    }
     void *malloc(size_t size) noexcept {
-        return ::malloc(size);
+        auto *ptr = ::malloc(size);
+        auto ret = umaMemoryProviderAlloc(tracker, size, 0, &ptr);
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
+        return ptr;
     }
     void *calloc(size_t num, size_t size) noexcept {
-        return ::calloc(num, size);
+        auto *ptr = ::calloc(num, size);
+        auto ret = umaMemoryProviderAlloc(tracker, num * size, 0, &ptr);
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
+        return ptr;
     }
     void *realloc(void *ptr, size_t size) noexcept {
-        return ::realloc(ptr, size);
+        ptr = ::realloc(ptr, size);
+        auto ret = umaMemoryProviderAlloc(tracker, size, 0, &ptr);
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
+        return ptr;
     }
     void *aligned_malloc(size_t size, size_t alignment) noexcept {
 #ifdef _WIN32
         // we could use _aligned_alloc but it requires using _aligned_free...
         return nullptr;
 #else
-        return ::aligned_alloc(alignment, size);
+        auto *ptr = ::aligned_alloc(alignment, size);
+        auto ret = umaMemoryProviderAlloc(tracker, size, 0, &ptr);
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
+        return ptr;
 #endif
     }
     size_t malloc_usable_size(void *ptr) noexcept {
@@ -77,8 +96,12 @@ struct malloc_pool : public pool_base {
 #endif
     }
     void free(void *ptr) noexcept {
+        auto ret = umaMemoryProviderFree(tracker, ptr, 0);
+        EXPECT_EQ(ret, UMA_RESULT_SUCCESS);
         return ::free(ptr);
     }
+
+    uma_memory_provider_handle_t tracker;
 };
 
 } // namespace uma_test
