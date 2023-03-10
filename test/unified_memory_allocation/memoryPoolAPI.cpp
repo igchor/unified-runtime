@@ -53,22 +53,6 @@ TEST_F(test, memoryPoolTrace) {
     ASSERT_EQ(calls.size(), ++call_count);
 }
 
-TEST_F(test, memoryPoolWithTrackerProvider) {
-    struct pool : public uma_test::pool_base {
-        uma_result_t initialize(struct uma_memory_provider_desc_t *providers,
-                                size_t numProviders) noexcept {
-            EXPECT_NE(providers, nullptr);
-            EXPECT_EQ(numProviders, 1);
-            EXPECT_EQ(providers[0].providerType, UMA_MEMORY_PROVIDER_TYPE_TRACKER);
-            return UMA_RESULT_SUCCESS;
-        }
-    };
-
-    auto ret = uma::poolMakeUnique<pool>(nullptr, 0);
-    ASSERT_EQ(ret.first, UMA_RESULT_SUCCESS);
-    ASSERT_NE(ret.second, nullptr);
-}
-
 TEST_F(test, memoryPoolWithCustomProviders) {
     struct uma_memory_provider_desc_t providers[] = {
         {nullProviderCreate(), UMA_MEMORY_PROVIDER_TYPE_DATA},
@@ -96,13 +80,35 @@ TEST_F(test, memoryPoolWithCustomProviders) {
     }
 }
 
+template <typename Pool>
+static auto makePool(std::function<uma::provider_unique_handle_t()> makeProvider) {
+    auto provider = makeProvider();
+    uma_memory_provider_desc_t desc{provider.get(), UMA_MEMORY_PROVIDER_TYPE_DATA};
+    auto pool = uma::poolMakeUnique<Pool>(&desc, 1).second;
+    auto dtor = [provider = provider.release()](uma_memory_pool_handle_t hPool) {
+        umaPoolDestroy(hPool);
+        umaMemoryProviderDestroy(provider);
+    };
+    return uma::pool_unique_handle_t(pool.release(), std::move(dtor));
+}
+
 INSTANTIATE_TEST_SUITE_P(mallocPoolTest, umaPoolTest,
                          ::testing::Values(
-                             [] { return uma::poolMakeUnique<uma_test::malloc_pool>(nullptr, 0); }));
+                             [] {
+                                 return makePool<uma_test::malloc_pool>([] { return uma_test::wrapProviderUnique(nullProviderCreate()); });
+                             }));
+
+INSTANTIATE_TEST_SUITE_P(mallocProviderPoolTest, umaPoolTest,
+                         ::testing::Values(
+                             [] {
+                                 return makePool<uma_test::proxy_pool>([] { return uma::memoryProviderMakeUnique<uma_test::provider_malloc>().second; });
+                             }));
 
 INSTANTIATE_TEST_SUITE_P(mallocMultiPoolTest, umaMultiPoolTest,
                          ::testing::Values(
-                             [] { return uma::poolMakeUnique<uma_test::malloc_pool>(nullptr, 0); }));
+                             [] {
+                                 return makePool<uma_test::proxy_pool>([] { return uma::memoryProviderMakeUnique<uma_test::provider_malloc>().second; });
+                             }));
 
 //////////////////////////// Negative test cases ////////////////////////////////
 
@@ -120,15 +126,6 @@ TEST_F(test, memoryPoolInvalidProviders) {
     ASSERT_EQ(ret.first, UMA_RESULT_ERROR_INVALID_ARGUMENT);
 }
 
-TEST_F(test, memoryPoolInvalidProviderType) {
-    auto nullProvider = uma_test::wrapProviderUnique(nullProviderCreate());
-    struct uma_memory_provider_desc_t providers[] = {
-        {nullProvider.get(), UMA_MEMORY_PROVIDER_TYPE_TRACKER}};
-
-    auto ret = uma::poolMakeUnique<uma_test::pool_base>(providers, 1);
-    ASSERT_EQ(ret.first, UMA_RESULT_ERROR_INVALID_ARGUMENT);
-}
-
 struct poolInitializeTest : uma_test::test, ::testing::WithParamInterface<uma_result_t> {};
 
 INSTANTIATE_TEST_SUITE_P(poolInitializeTest,
@@ -141,13 +138,17 @@ INSTANTIATE_TEST_SUITE_P(poolInitializeTest,
                              UMA_RESULT_ERROR_UNKNOWN));
 
 TEST_P(poolInitializeTest, errorPropagation) {
+    auto nullProvider = uma_test::wrapProviderUnique(nullProviderCreate());
+    struct uma_memory_provider_desc_t providers[] = {
+        {nullProvider.get(), UMA_MEMORY_PROVIDER_TYPE_DATA}};
+
     struct pool : public uma_test::pool_base {
         uma_result_t initialize(struct uma_memory_provider_desc_t *providers,
                                 size_t numProviders, uma_result_t errorToReturn) noexcept {
             return errorToReturn;
         }
     };
-    auto ret = uma::poolMakeUnique<pool>(nullptr, 0, this->GetParam());
+    auto ret = uma::poolMakeUnique<pool>(providers, 1, this->GetParam());
     ASSERT_EQ(ret.first, this->GetParam());
     ASSERT_EQ(ret.second, nullptr);
 }

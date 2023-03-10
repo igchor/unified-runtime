@@ -14,6 +14,7 @@
 #include <uma/memory_provider.h>
 #include <uma/memory_provider_ops.h>
 
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <tuple>
@@ -21,8 +22,8 @@
 
 namespace uma {
 
-using pool_unique_handle_t = std::unique_ptr<uma_memory_pool_t, decltype(&umaPoolDestroy)>;
-using provider_unique_handle_t = std::unique_ptr<uma_memory_provider_t, decltype(&umaMemoryProviderDestroy)>;
+using pool_unique_handle_t = std::unique_ptr<uma_memory_pool_t, std::function<void(uma_memory_pool_handle_t)>>;
+using provider_unique_handle_t = std::unique_ptr<uma_memory_provider_t, std::function<void(uma_memory_provider_handle_t)>>;
 
 /// @brief creates UMA memory provider based on given T type.
 /// T should implement all functions defined by

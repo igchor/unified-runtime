@@ -24,19 +24,8 @@ struct uma_memory_pool_t {
 
 enum uma_result_t umaPoolCreate(struct uma_memory_pool_ops_t *ops, struct uma_memory_provider_desc_t *providers,
                                 size_t numProviders, void *params, uma_memory_pool_handle_t *hPool) {
-    if (providers && !numProviders) {
+    if (!numProviders || !providers) {
         return UMA_RESULT_ERROR_INVALID_ARGUMENT;
-    }
-
-    if (!providers && numProviders) {
-        return UMA_RESULT_ERROR_INVALID_ARGUMENT;
-    }
-
-    for (size_t i = 0; i < numProviders; i++) {
-        // UMA_MEMORY_PROVIDER_TYPE_TRACKER can only be created by the UMA library
-        if (providers[i].providerType == UMA_MEMORY_PROVIDER_TYPE_TRACKER) {
-            return UMA_RESULT_ERROR_INVALID_ARGUMENT;
-        }
     }
 
     enum uma_result_t ret = UMA_RESULT_SUCCESS;
@@ -47,28 +36,19 @@ enum uma_result_t umaPoolCreate(struct uma_memory_pool_ops_t *ops, struct uma_me
 
     assert(ops->version == UMA_VERSION_CURRENT);
 
-    pool->providers = calloc(numProviders ? numProviders : 1, sizeof(struct uma_memory_provider_desc_t));
+    pool->providers = calloc(numProviders, sizeof(struct uma_memory_provider_desc_t));
     if (!pool->providers) {
         ret = UMA_RESULT_ERROR_OUT_OF_HOST_MEMORY;
         goto err_providers_alloc;
     }
 
     size_t providerInd = 0;
-    if (!numProviders) {
-        pool->numProviders = 1;
-        pool->providers[0].providerType = UMA_MEMORY_PROVIDER_TYPE_TRACKER;
-        ret = umaTrackingMemoryProviderCreate(NULL, pool, &pool->providers[0].hProvider);
+    pool->numProviders = numProviders;
+    for (providerInd = 0; providerInd < numProviders; providerInd++) {
+        pool->providers[providerInd].providerType = providers[providerInd].providerType;
+        ret = umaTrackingMemoryProviderCreate(providers[providerInd].hProvider, pool, &pool->providers[providerInd].hProvider);
         if (ret != UMA_RESULT_SUCCESS) {
             goto err_providers_init;
-        }
-    } else {
-        pool->numProviders = numProviders;
-        for (providerInd = 0; providerInd < numProviders; providerInd++) {
-            pool->providers[providerInd].providerType = providers[providerInd].providerType;
-            ret = umaTrackingMemoryProviderCreate(providers[providerInd].hProvider, pool, &pool->providers[providerInd].hProvider);
-            if (ret != UMA_RESULT_SUCCESS) {
-                goto err_providers_init;
-            }
         }
     }
 

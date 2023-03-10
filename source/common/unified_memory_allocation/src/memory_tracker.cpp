@@ -89,13 +89,9 @@ static enum uma_result_t trackingAlloc(void *hProvider,
     uma_tracking_memory_provider_t *p = (uma_tracking_memory_provider_t *)hProvider;
     enum uma_result_t ret = UMA_RESULT_SUCCESS;
 
-    if (p->hUpstream) {
-        ret = umaMemoryProviderAlloc(p->hUpstream, size, alignment, ptr);
-        if (ret != UMA_RESULT_SUCCESS) {
-            return ret;
-        }
-    } else {
-        // expects *ptr to be a valid address
+    ret = umaMemoryProviderAlloc(p->hUpstream, size, alignment, ptr);
+    if (ret != UMA_RESULT_SUCCESS) {
+        return ret;
     }
 
     // TODO: is it fine that allocation and adding memory to tracker is not a single atomic action
@@ -119,15 +115,13 @@ static enum uma_result_t trackingFree(void *hProvider,
         return ret;
     }
 
-    if (p->hUpstream) {
-        // TODO: is it fine that deallocation and removing memory from the tracker is not a single atomic action
-        ret = umaMemoryProviderFree(p->hUpstream, ptr, size);
-        if (ret != UMA_RESULT_SUCCESS) {
-            if (umaMemoryTrackerAdd(p->hTracker, p->pool, ptr, size) != UMA_RESULT_SUCCESS) {
-                // TODO: LOG
-            }
-            return ret;
+    // TODO: is it fine that deallocation and removing memory from the tracker is not a single atomic action
+    ret = umaMemoryProviderFree(p->hUpstream, ptr, size);
+    if (ret != UMA_RESULT_SUCCESS) {
+        if (umaMemoryTrackerAdd(p->hTracker, p->pool, ptr, size) != UMA_RESULT_SUCCESS) {
+            // TODO: LOG
         }
+        return ret;
     }
 
     return ret;

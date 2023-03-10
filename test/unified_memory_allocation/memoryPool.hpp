@@ -10,7 +10,7 @@
 #ifndef UMA_TEST_MEMORY_POOL_OPS_HPP
 #define UMA_TEST_MEMORY_POOL_OPS_HPP
 
-struct umaPoolTest : uma_test::test, ::testing::WithParamInterface<std::function<std::pair<uma_result_t, uma::pool_unique_handle_t>()>> {
+struct umaPoolTest : uma_test::test, ::testing::WithParamInterface<std::function<uma::pool_unique_handle_t(void)>> {
     umaPoolTest() : pool(nullptr, nullptr) {}
     void SetUp() {
         test::SetUp();
@@ -22,10 +22,9 @@ struct umaPoolTest : uma_test::test, ::testing::WithParamInterface<std::function
     }
 
     uma::pool_unique_handle_t makePool() {
-        auto [res, pool] = this->GetParam()();
-        EXPECT_EQ(res, UMA_RESULT_SUCCESS);
+        auto pool = this->GetParam()();
         EXPECT_NE(pool, nullptr);
-        return std::move(pool);
+        return pool;
     }
 
     uma::pool_unique_handle_t pool;

@@ -22,11 +22,9 @@ struct uma_memory_pool_ops_t;
 
 /// \brief Type of a memory provider, defines purpose of the provider.
 enum uma_memory_provider_type {
-    UMA_MEMORY_PROVIDER_TYPE_METADATA,          ///< Provider should be used to allocate metadata only
-    UMA_MEMORY_PROVIDER_TYPE_DATA,              ///< Provider should be used to allocate data only
-    UMA_MEMORY_PROVIDER_TYPE_DATA_AND_METADATA, ///< Provider should be used to allocate both data and metadata
-    UMA_MEMORY_PROVIDER_TYPE_TRACKER            ///< Provider should not be used to request memory, it's only purpose is to track memory allocations.
-                                                ///< This type can only be created by UMA library.
+    UMA_MEMORY_PROVIDER_TYPE_METADATA,         ///< Provider should be used to allocate metadata only
+    UMA_MEMORY_PROVIDER_TYPE_DATA,             ///< Provider should be used to allocate data only
+    UMA_MEMORY_PROVIDER_TYPE_DATA_AND_METADATA ///< Provider should be used to allocate both data and metadata
 };
 
 /// \brief Descriptor of a memory provider. Consists of handle to the provider and it's type.
@@ -38,8 +36,7 @@ struct uma_memory_provider_desc_t {
 ///
 /// \brief Creates new memory pool
 /// \param ops instance of uma_memory_pool_ops_t
-/// \param providers array of memory provider descriptors, if numProviders is 0, UMA will create a single memory provider
-///                  of type UMA_MEMORY_PROVIDER_TYPE_TRACKER and pass it to the pool::initialize function.
+/// \param providers array of memory provider descriptors
 /// \param numProvider number of elements in the providers array
 /// \param params pointer to pool-specific parameters
 /// \return UMA_RESULT_SUCCESS on success or appropriate error code on failure
