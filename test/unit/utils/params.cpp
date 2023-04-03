@@ -9,25 +9,15 @@
 #include "ur_api.h"
 #include "ur_params.hpp"
 
-template <typename T> struct WrappedParams {
-    typedef T value_type;
-    virtual ~WrappedParams() {}
-    virtual T *get_struct() = 0;
-    virtual const char *get_expected() = 0;
-};
-
-template <typename T>
-std::unique_ptr<WrappedParams<typename T::value_type>> createParams();
-
 template <typename T> class ParamsTest : public testing::Test {
   protected:
-    ParamsTest() : params(createParams<T>()) {}
+    ParamsTest() : params() {}
     ~ParamsTest() override {}
 
-    std::unique_ptr<WrappedParams<typename T::value_type>> params;
+    T params;
 };
 
-struct UrInitParams : public WrappedParams<ur_init_params_t> {
+struct UrInitParams {
     ur_init_params_t params;
     ur_device_init_flags_t flags;
     UrInitParams(ur_device_init_flags_t _flags) : flags(_flags) {
@@ -42,12 +32,6 @@ struct UrInitParamsNoFlags : UrInitParams {
     const char *get_expected() { return ".device_flags = 0"; };
 };
 
-template <>
-std::unique_ptr<WrappedParams<ur_init_params_t>>
-createParams<UrInitParamsNoFlags>() {
-    return std::make_unique<UrInitParamsNoFlags>();
-}
-
 struct UrInitParamsInvalidFlags : UrInitParams {
     UrInitParamsInvalidFlags()
         : UrInitParams(UR_DEVICE_INIT_FLAG_GPU | UR_DEVICE_INIT_FLAG_MCA |
@@ -59,13 +43,7 @@ struct UrInitParamsInvalidFlags : UrInitParams {
     };
 };
 
-template <>
-std::unique_ptr<WrappedParams<ur_init_params_t>>
-createParams<UrInitParamsInvalidFlags>() {
-    return std::make_unique<UrInitParamsInvalidFlags>();
-}
-
-struct UrPlatformGet : public WrappedParams<ur_platform_get_params_t> {
+struct UrPlatformGet {
     ur_platform_get_params_t params;
     uint32_t num_entries;
     uint32_t *pNumPlatforms;
@@ -90,12 +68,6 @@ struct UrPlatformGetEmptyArray : UrPlatformGet {
     };
 };
 
-template <>
-std::unique_ptr<WrappedParams<ur_platform_get_params_t>>
-createParams<UrPlatformGetEmptyArray>() {
-    return std::make_unique<UrPlatformGetEmptyArray>();
-}
-
 struct UrPlatformGetTwoPlatforms : UrPlatformGet {
     ur_platform_handle_t platforms[2] = {(ur_platform_handle_t)0xDEAFBEEFull,
                                          (ur_platform_handle_t)0xBADDCAFEull};
@@ -112,13 +84,7 @@ struct UrPlatformGetTwoPlatforms : UrPlatformGet {
     };
 };
 
-template <>
-std::unique_ptr<WrappedParams<ur_platform_get_params_t>>
-createParams<UrPlatformGetTwoPlatforms>() {
-    return std::make_unique<UrPlatformGetTwoPlatforms>();
-}
-
-struct UrUsmHostAllocParams : public WrappedParams<ur_usm_host_alloc_params_t> {
+struct UrUsmHostAllocParams {
     ur_usm_host_alloc_params_t params;
 
     ur_context_handle_t hContext;
@@ -156,12 +122,6 @@ struct UrUsmHostAllocParamsEmpty : UrUsmHostAllocParams {
     };
 };
 
-template <>
-std::unique_ptr<WrappedParams<ur_usm_host_alloc_params_t>>
-createParams<UrUsmHostAllocParamsEmpty>() {
-    return std::make_unique<UrUsmHostAllocParamsEmpty>();
-}
-
 struct UrUsmHostAllocParamsUsmDesc : UrUsmHostAllocParams {
     ur_usm_desc_t usm_desc;
     UrUsmHostAllocParamsUsmDesc() : UrUsmHostAllocParams() {
@@ -182,12 +142,6 @@ struct UrUsmHostAllocParamsUsmDesc : UrUsmHostAllocParams {
     };
 };
 
-template <>
-std::unique_ptr<WrappedParams<ur_usm_host_alloc_params_t>>
-createParams<UrUsmHostAllocParamsUsmDesc>() {
-    return std::make_unique<UrUsmHostAllocParamsUsmDesc>();
-}
-
 struct UrUsmHostAllocParamsHostDesc : UrUsmHostAllocParamsUsmDesc {
     ur_usm_host_desc_t host_desc;
     UrUsmHostAllocParamsHostDesc() : UrUsmHostAllocParamsUsmDesc() {
@@ -206,12 +160,6 @@ struct UrUsmHostAllocParamsHostDesc : UrUsmHostAllocParamsUsmDesc {
     };
 };
 
-template <>
-std::unique_ptr<WrappedParams<ur_usm_host_alloc_params_t>>
-createParams<UrUsmHostAllocParamsHostDesc>() {
-    return std::make_unique<UrUsmHostAllocParamsHostDesc>();
-}
-
 using testing::Types;
 typedef Types<UrInitParamsNoFlags, UrInitParamsInvalidFlags,
               UrUsmHostAllocParamsEmpty, UrPlatformGetEmptyArray,
@@ -226,8 +174,8 @@ TYPED_TEST_SUITE(ParamsTest, Implementations, );
 
 TYPED_TEST(ParamsTest, Serialize) {
     std::ostringstream out;
-    out << this->params->get_struct();
-    EXPECT_THAT(out.str(), MatchesRegex(this->params->get_expected()));
+    out << this->params.get_struct();
+    EXPECT_THAT(out.str(), MatchesRegex(this->params.get_expected()));
 }
 
 TEST(SerializePtr, nested_void_ptrs) {
