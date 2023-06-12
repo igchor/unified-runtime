@@ -272,6 +272,9 @@ class DisjointPool::AllocImpl {
     // Configuration for this instance
     DisjointPoolConfig params;
 
+    // Coarse-grain allocation min alignment
+    size_t ProviderMinPageSize;
+
   public:
     AllocImpl(uma_memory_provider_handle_t hProvider, DisjointPoolConfig params)
         : MemHandle{hProvider}, params(params) {
@@ -285,6 +288,10 @@ class DisjointPool::AllocImpl {
             Buckets.push_back(std::make_unique<Bucket>(Size2, *this));
         }
         Buckets.push_back(std::make_unique<Bucket>(CutOff, *this));
+
+        auto ret = umaMemoryProviderGetMinPageSize(hProvider, nullptr, &ProviderMinPageSize);
+        if (ret != UMA_RESULT_SUCCESS)
+            ProviderMinPageSize = 0;
     }
 
     void *allocate(size_t Size, size_t Alignment, bool &FromPool);
@@ -738,9 +745,16 @@ void *DisjointPool::AllocImpl::allocate(size_t Size, size_t Alignment,
         return allocate(Size, FromPool);
     }
 
+    auto &unalignedBucket = findBucket(Size);
+    auto naturalAlignment = std::min(ProviderMinPageSize, unalignedBucket.getSize());
+
+    auto AlignedSize = (naturalAlignment >= Alignment) Size : 
+
     // TODO: we potentially waste some space here, calulate it based on minBucketSize and Slab alignemnt
     // (using umaMemoryProviderGetMinPageSize)?
     size_t AlignedSize = (Size > 1) ? (Size + Alignment - 1) : Alignment;
+
+    ProviderMinPageSize
 
     // Check if requested allocation size is within pooling limit.
     // If not, just request aligned pointer from the system.
