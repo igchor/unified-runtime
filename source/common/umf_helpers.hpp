@@ -54,7 +54,11 @@ namespace detail {
 template <typename T, typename ArgsTuple>
 umf_result_t initialize(T *obj, ArgsTuple &&args) {
     try {
-        auto ret = std::apply(&T::initialize,
+        // initialize() can be overloaded, so wrap it in lambda
+        auto initialize_wrapper = [](T *obj, auto... args) {
+            return obj->initialize(args...);
+        };
+        auto ret = std::apply(initialize_wrapper,
                               std::tuple_cat(std::make_tuple(obj),
                                              std::forward<ArgsTuple>(args)));
         if (ret != UMF_RESULT_SUCCESS) {
@@ -80,10 +84,11 @@ umf_memory_pool_ops_t poolMakeUniqueOps() {
             return UMF_RESULT_ERROR_OUT_OF_HOST_MEMORY;
         }
 
+        auto argsTuple = params ? *reinterpret_cast<ArgsTuple *>(params) : std::make_tuple();
         return detail::initialize<T>(
             reinterpret_cast<T *>(*obj),
             std::tuple_cat(std::make_tuple(providers, numProviders),
-                           *reinterpret_cast<ArgsTuple *>(params)));
+                           std::move(argsTuple)));
     };
     ops.finalize = [](void *obj) { delete reinterpret_cast<T *>(obj); };
 

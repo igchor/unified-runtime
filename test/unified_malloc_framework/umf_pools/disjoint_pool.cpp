@@ -35,6 +35,10 @@ static auto makePool() {
 
 using umf_test::test;
 
+TEST_F(test, C_interop) {
+    auto ops = umf::detail::poolMakeUniqueOps<usm::DisjointPool, usm::DisjointPool::Config>
+}
+
 TEST_F(test, freeErrorPropagation) {
     static enum umf_result_t freeReturn = UMF_RESULT_SUCCESS;
     struct memory_provider : public umf_test::provider_base {
