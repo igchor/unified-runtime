@@ -14,6 +14,7 @@
 #include <umf/base.h>
 #include <umf/memory_provider.h>
 #ifdef __cplusplus
+#include <memory>
 #include <memory_resource>
 #endif
 
@@ -152,8 +153,21 @@ umfPoolGetMemoryProviders(umf_memory_pool_handle_t hPool, size_t numProviders,
                           size_t *numProvidersRet);
 
 #ifdef __cplusplus
-std::pmr::memory_resource* umfPoolToMemoryResource(umf_memory_pool_handle_t hPool);
-umf_memory_pool_handle_t umfMemoryResourceToPool(std::pmr::memory_resource* resource);
+struct umf_memory_pool_impl;
+struct umf_memory_pool_t : std::pmr::memory_resource {
+    umf_memory_pool_t(const struct umf_memory_pool_ops_t *ops,
+                                umf_memory_provider_handle_t *providers,
+                                size_t numProviders, void *params);
+    void* do_allocate(std::size_t bytes, std::size_t alignment) override;
+    void do_deallocate(void* p, std::size_t, std::size_t) override;
+    bool do_is_equal( const std::pmr::memory_resource& other ) const noexcept override;
+    virtual ~umf_memory_pool_t() = default;
+
+    // we could also expose realloc, malloc_usable_size, etc. here as well
+    // so that C++ applications could just call:: pool.realloc(...)
+    using impl = umf_memory_pool_impl;
+    std::unique_ptr<impl> impl_;
+};
 #endif
 
 #ifdef __cplusplus

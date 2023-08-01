@@ -27,64 +27,46 @@ destroyMemoryProviderWrappers(umf_memory_provider_handle_t *providers,
     free(providers);
 }
 
-enum umf_result_t umfPoolCreate(const struct umf_memory_pool_ops_t *ops,
+umf_memory_pool_t::umf_memory_pool_t(const struct umf_memory_pool_ops_t *ops,
                                 umf_memory_provider_handle_t *providers,
-                                size_t numProviders, void *params,
-                                umf_memory_pool_handle_t *hPool) {
+                                size_t numProviders, void *params) {
     if (!numProviders || !providers) {
-        return UMF_RESULT_ERROR_INVALID_ARGUMENT;
+        throw UMF_RESULT_ERROR_INVALID_ARGUMENT;
     }
 
     size_t providerInd = 0;
-    enum umf_result_t ret = UMF_RESULT_SUCCESS;
-    umf_memory_pool_handle_t pool = new umf_memory_pool_t;
-    if (!pool) {
-        return UMF_RESULT_ERROR_OUT_OF_HOST_MEMORY;
-    }
-
     assert(ops->version == UMF_VERSION_CURRENT);
 
-    pool->providers = (umf_memory_provider_handle_t*)
+    impl_ = std::make_unique<impl>();
+    impl_->providers = (umf_memory_provider_handle_t*)
         calloc(numProviders, sizeof(umf_memory_provider_handle_t));
-    if (!pool->providers) {
-        ret = UMF_RESULT_ERROR_OUT_OF_HOST_MEMORY;
-        goto err_providers_alloc;
+    if (!impl_->providers) {
+        throw UMF_RESULT_ERROR_OUT_OF_HOST_MEMORY;
     }
 
 
-    pool->numProviders = numProviders;
+    impl_->numProviders = numProviders;
 
     // Wrap each provider with memory tracking provider.
     for (providerInd = 0; providerInd < numProviders; providerInd++) {
-        ret = umfTrackingMemoryProviderCreate(providers[providerInd], pool,
-                                              &pool->providers[providerInd]);
+        auto ret = umfTrackingMemoryProviderCreate(providers[providerInd], this,
+                                              &impl_->providers[providerInd]);
         if (ret != UMF_RESULT_SUCCESS) {
-            goto err_providers_init;
+            throw ret;
         }
     }
 
-    pool->ops = *ops;
-    ret = ops->initialize(pool->providers, pool->numProviders, params,
-                          &pool->pool_priv);
+    impl_->ops = *ops;
+    auto ret = ops->initialize(impl_->providers, impl_->numProviders, params,
+                          &impl_->pool_priv);
     if (ret != UMF_RESULT_SUCCESS) {
-        goto err_pool_init;
+        throw ret;
     }
-
-    *hPool = pool;
-    return UMF_RESULT_SUCCESS;
-
-err_pool_init:
-err_providers_init:
-    destroyMemoryProviderWrappers(pool->providers, providerInd);
-err_providers_alloc:
-    delete pool;
-
-    return ret;
 }
 
 void umfPoolDestroy(umf_memory_pool_handle_t hPool) {
-    hPool->ops.finalize(hPool->pool_priv);
-    destroyMemoryProviderWrappers(hPool->providers, hPool->numProviders);
+    hPool->impl_->ops.finalize(hPool->impl_->pool_priv);
+    destroyMemoryProviderWrappers(hPool->impl_->providers, hPool->impl_->numProviders);
     delete hPool;
 }
 
@@ -104,18 +86,18 @@ enum umf_result_t
 umfPoolGetMemoryProviders(umf_memory_pool_handle_t hPool, size_t numProviders,
                           umf_memory_provider_handle_t *hProviders,
                           size_t *numProvidersRet) {
-    if (hProviders && numProviders < hPool->numProviders) {
+    if (hProviders && numProviders < hPool->impl_->numProviders) {
         return UMF_RESULT_ERROR_INVALID_ARGUMENT;
     }
 
     if (numProvidersRet) {
-        *numProvidersRet = hPool->numProviders;
+        *numProvidersRet = hPool->impl_->numProviders;
     }
 
     if (hProviders) {
-        for (size_t i = 0; i < hPool->numProviders; i++) {
+        for (size_t i = 0; i < hPool->impl_->numProviders; i++) {
             umfTrackingMemoryProviderGetUpstreamProvider(
-                (umf_memory_provider_handle_t) umfMemoryProviderGetPriv(hPool->providers[i]), hProviders + i);
+                (umf_memory_provider_handle_t) umfMemoryProviderGetPriv(hPool->impl_->providers[i]), hProviders + i);
         }
     }
 

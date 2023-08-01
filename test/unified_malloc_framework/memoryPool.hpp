@@ -293,7 +293,7 @@ TEST_P(umfMultiPoolTest, memoryTrackingCAndCPPInterop) {
     constexpr size_t size = 16;
 
     auto *c_ptr = umfPoolMalloc(pools[0].get(), size);
-    auto *cpp_ptr2 = umfPoolToMemoryResource(umfPoolByPtr(c_ptr))->allocate(size);
+    auto *cpp_ptr2 = umfPoolByPtr(c_ptr)->allocate(size);
 
     ASSERT_EQ(umfPoolByPtr(cpp_ptr2), pools[0].get());
     ASSERT_EQ(umfPoolByPtr(cpp_ptr2), umfPoolByPtr(c_ptr));
