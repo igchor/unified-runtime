@@ -15,11 +15,9 @@
 #include <umf/memory_pool_ops.h>
 #include <umf/memory_provider.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <memory_resource>
 
-struct umf_memory_pool_t {
+struct umf_memory_pool_t : std::pmr::memory_resource {
     void *pool_priv;
     struct umf_memory_pool_ops_t ops;
 
@@ -28,10 +26,11 @@ struct umf_memory_pool_t {
     umf_memory_provider_handle_t *providers;
 
     size_t numProviders;
-};
 
-#ifdef __cplusplus
-}
-#endif
+    void* do_allocate(std::size_t bytes, std::size_t alignment) override;
+    void do_deallocate(void* p, std::size_t, std::size_t) override;
+    bool do_is_equal( const std::pmr::memory_resource& other ) const noexcept override;
+    virtual ~umf_memory_pool_t() = default;
+};
 
 #endif /* UMF_MEMORY_POOL_INTERNAL_H */

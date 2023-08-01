@@ -13,6 +13,9 @@
 
 #include <umf/base.h>
 #include <umf/memory_provider.h>
+#ifdef __cplusplus
+#include <memory_resource>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -147,6 +150,11 @@ enum umf_result_t
 umfPoolGetMemoryProviders(umf_memory_pool_handle_t hPool, size_t numProviders,
                           umf_memory_provider_handle_t *hProviders,
                           size_t *numProvidersRet);
+
+#ifdef __cplusplus
+std::pmr::memory_resource* umfPoolToMemoryResource(umf_memory_pool_handle_t hPool);
+umf_memory_pool_handle_t umfMemoryResourceToPool(std::pmr::memory_resource* resource);
+#endif
 
 #ifdef __cplusplus
 }

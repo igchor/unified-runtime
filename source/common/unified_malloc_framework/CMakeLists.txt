@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 set(UMF_SOURCES
-    src/memory_pool.c
+    src/memory_pool.cpp
     src/memory_provider.c
     src/memory_tracker.cpp
     src/memory_provider_get_last_failed.cpp
@@ -23,9 +23,9 @@ else()
 endif()
 
 if (UMF_ENABLE_POOL_TRACKING)
-    target_sources(unified_malloc_framework PRIVATE src/memory_pool_tracking.c)
+    target_sources(unified_malloc_framework PRIVATE src/memory_pool_tracking.cpp)
 else()
-    target_sources(unified_malloc_framework PRIVATE src/memory_pool_default.c)
+    target_sources(unified_malloc_framework PRIVATE src/memory_pool_default.cpp)
 endif()
 
 add_library(${PROJECT_NAME}::unified_malloc_framework ALIAS unified_malloc_framework)

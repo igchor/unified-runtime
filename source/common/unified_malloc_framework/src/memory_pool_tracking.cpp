@@ -8,7 +8,7 @@
  *
  */
 
-#include "memory_pool_internal.h"
+#include "memory_pool_internal.hpp"
 #include "memory_provider_internal.h"
 #include "memory_tracker.h"
 
@@ -35,22 +35,23 @@ enum umf_result_t umfPoolCreate(const struct umf_memory_pool_ops_t *ops,
         return UMF_RESULT_ERROR_INVALID_ARGUMENT;
     }
 
+    size_t providerInd = 0;
     enum umf_result_t ret = UMF_RESULT_SUCCESS;
-    umf_memory_pool_handle_t pool = malloc(sizeof(struct umf_memory_pool_t));
+    umf_memory_pool_handle_t pool = new umf_memory_pool_t;
     if (!pool) {
         return UMF_RESULT_ERROR_OUT_OF_HOST_MEMORY;
     }
 
     assert(ops->version == UMF_VERSION_CURRENT);
 
-    pool->providers =
+    pool->providers = (umf_memory_provider_handle_t*)
         calloc(numProviders, sizeof(umf_memory_provider_handle_t));
     if (!pool->providers) {
         ret = UMF_RESULT_ERROR_OUT_OF_HOST_MEMORY;
         goto err_providers_alloc;
     }
 
-    size_t providerInd = 0;
+
     pool->numProviders = numProviders;
 
     // Wrap each provider with memory tracking provider.
@@ -76,7 +77,7 @@ err_pool_init:
 err_providers_init:
     destroyMemoryProviderWrappers(pool->providers, providerInd);
 err_providers_alloc:
-    free(pool);
+    delete pool;
 
     return ret;
 }
@@ -84,7 +85,7 @@ err_providers_alloc:
 void umfPoolDestroy(umf_memory_pool_handle_t hPool) {
     hPool->ops.finalize(hPool->pool_priv);
     destroyMemoryProviderWrappers(hPool->providers, hPool->numProviders);
-    free(hPool);
+    delete hPool;
 }
 
 enum umf_result_t umfFree(void *ptr) {
@@ -96,7 +97,7 @@ enum umf_result_t umfFree(void *ptr) {
 }
 
 umf_memory_pool_handle_t umfPoolByPtr(const void *ptr) {
-    return umfMemoryTrackerGetPool(umfMemoryTrackerGet(), ptr);
+    return (umf_memory_pool_handle_t) umfMemoryTrackerGetPool(umfMemoryTrackerGet(), ptr);
 }
 
 enum umf_result_t
@@ -114,7 +115,7 @@ umfPoolGetMemoryProviders(umf_memory_pool_handle_t hPool, size_t numProviders,
     if (hProviders) {
         for (size_t i = 0; i < hPool->numProviders; i++) {
             umfTrackingMemoryProviderGetUpstreamProvider(
-                umfMemoryProviderGetPriv(hPool->providers[i]), hProviders + i);
+                (umf_memory_provider_handle_t) umfMemoryProviderGetPriv(hPool->providers[i]), hProviders + i);
         }
     }
 
