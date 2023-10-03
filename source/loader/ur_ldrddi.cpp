@@ -2284,6 +2284,47 @@ __urdlllocal ur_result_t UR_APICALL urProgramCompile(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Intercept function for urProgramCompileExp
+__urdlllocal ur_result_t UR_APICALL urProgramCompileExp(
+    ur_context_handle_t hContext, ///< [in] handle of the context instance.
+    ur_program_handle_t
+        hProgram,        ///< [in][out] handle of the program to compile.
+    uint32_t numDevices, ///< [in] number of devices
+    ur_device_handle_t *
+        phDevices, ///< [in][range(0, numDevices)] pointer to array of device handles
+    const char *
+        pOptions ///< [in][optional] pointer to build options null-terminated string.
+) {
+    ur_result_t result = UR_RESULT_SUCCESS;
+
+    // extract platform's function pointer table
+    auto dditable = reinterpret_cast<ur_context_object_t *>(hContext)->dditable;
+    auto pfnCompileExp = dditable->ur.ProgramExp.pfnCompileExp;
+    if (nullptr == pfnCompileExp) {
+        return UR_RESULT_ERROR_UNINITIALIZED;
+    }
+
+    // convert loader handle to platform handle
+    hContext = reinterpret_cast<ur_context_object_t *>(hContext)->handle;
+
+    // convert loader handle to platform handle
+    hProgram = reinterpret_cast<ur_program_object_t *>(hProgram)->handle;
+
+    // convert loader handles to platform handles
+    auto phDevicesLocal = std::vector<ur_device_handle_t>(numDevices);
+    for (size_t i = 0; i < numDevices; ++i) {
+        phDevicesLocal[i] =
+            reinterpret_cast<ur_device_object_t *>(phDevices[i])->handle;
+    }
+
+    // forward to device-platform
+    result = pfnCompileExp(hContext, hProgram, numDevices,
+                           phDevicesLocal.data(), pOptions);
+
+    return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief Intercept function for urProgramLink
 __urdlllocal ur_result_t UR_APICALL urProgramLink(
     ur_context_handle_t hContext, ///< [in] handle of the context instance.
@@ -2317,6 +2358,66 @@ __urdlllocal ur_result_t UR_APICALL urProgramLink(
     // forward to device-platform
     result =
         pfnLink(hContext, count, phProgramsLocal.data(), pOptions, phProgram);
+
+    if (UR_RESULT_SUCCESS != result) {
+        return result;
+    }
+
+    try {
+        // convert platform handle to loader handle
+        *phProgram = reinterpret_cast<ur_program_handle_t>(
+            ur_program_factory.getInstance(*phProgram, dditable));
+    } catch (std::bad_alloc &) {
+        result = UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
+    }
+
+    return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Intercept function for urProgramLinkExp
+__urdlllocal ur_result_t UR_APICALL urProgramLinkExp(
+    ur_context_handle_t hContext, ///< [in] handle of the context instance.
+    uint32_t count, ///< [in] number of program handles in `phPrograms`.
+    const ur_program_handle_t *
+        phPrograms, ///< [in][range(0, count)] pointer to array of program handles.
+    uint32_t numDevices, ///< [in] number of devices
+    ur_device_handle_t *
+        phDevices, ///< [in][range(0, numDevices)] pointer to array of device handles
+    const char *
+        pOptions, ///< [in][optional] pointer to linker options null-terminated string.
+    ur_program_handle_t
+        *phProgram ///< [out] pointer to handle of program object created.
+) {
+    ur_result_t result = UR_RESULT_SUCCESS;
+
+    // extract platform's function pointer table
+    auto dditable = reinterpret_cast<ur_context_object_t *>(hContext)->dditable;
+    auto pfnLinkExp = dditable->ur.ProgramExp.pfnLinkExp;
+    if (nullptr == pfnLinkExp) {
+        return UR_RESULT_ERROR_UNINITIALIZED;
+    }
+
+    // convert loader handle to platform handle
+    hContext = reinterpret_cast<ur_context_object_t *>(hContext)->handle;
+
+    // convert loader handles to platform handles
+    auto phProgramsLocal = std::vector<ur_program_handle_t>(count);
+    for (size_t i = 0; i < count; ++i) {
+        phProgramsLocal[i] =
+            reinterpret_cast<ur_program_object_t *>(phPrograms[i])->handle;
+    }
+
+    // convert loader handles to platform handles
+    auto phDevicesLocal = std::vector<ur_device_handle_t>(numDevices);
+    for (size_t i = 0; i < numDevices; ++i) {
+        phDevicesLocal[i] =
+            reinterpret_cast<ur_device_object_t *>(phDevices[i])->handle;
+    }
+
+    // forward to device-platform
+    result = pfnLinkExp(hContext, count, phProgramsLocal.data(), numDevices,
+                        phDevicesLocal.data(), pOptions, phProgram);
 
     if (UR_RESULT_SUCCESS != result) {
         return result;
@@ -7643,6 +7744,8 @@ UR_DLLEXPORT ur_result_t UR_APICALL urGetProgramExpProcAddrTable(
             ur_loader::context->forceIntercept) {
             // return pointers to loader's DDIs
             pDdiTable->pfnBuildExp = ur_loader::urProgramBuildExp;
+            pDdiTable->pfnCompileExp = ur_loader::urProgramCompileExp;
+            pDdiTable->pfnLinkExp = ur_loader::urProgramLinkExp;
         } else {
             // return pointers directly to platform's DDIs
             *pDdiTable =

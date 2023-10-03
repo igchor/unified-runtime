@@ -188,6 +188,8 @@ class ur_function_v(IntEnum):
     COMMAND_BUFFER_APPEND_MEMBUFFER_WRITE_RECT_EXP = 170## Enumerator for ::urCommandBufferAppendMembufferWriteRectExp
     COMMAND_BUFFER_APPEND_MEMBUFFER_READ_RECT_EXP = 171 ## Enumerator for ::urCommandBufferAppendMembufferReadRectExp
     PROGRAM_BUILD_EXP = 172                         ## Enumerator for ::urProgramBuildExp
+    PROGRAM_COMPILE_EXP = 173                       ## Enumerator for ::urProgramCompileExp
+    PROGRAM_LINK_EXP = 174                          ## Enumerator for ::urProgramLinkExp
 
 class ur_function_t(c_int):
     def __str__(self):
@@ -2516,12 +2518,28 @@ if __use_win_types:
 else:
     _urProgramBuildExp_t = CFUNCTYPE( ur_result_t, ur_context_handle_t, ur_program_handle_t, c_ulong, POINTER(ur_device_handle_t), c_char_p )
 
+###############################################################################
+## @brief Function-pointer for urProgramCompileExp
+if __use_win_types:
+    _urProgramCompileExp_t = WINFUNCTYPE( ur_result_t, ur_context_handle_t, ur_program_handle_t, c_ulong, POINTER(ur_device_handle_t), c_char_p )
+else:
+    _urProgramCompileExp_t = CFUNCTYPE( ur_result_t, ur_context_handle_t, ur_program_handle_t, c_ulong, POINTER(ur_device_handle_t), c_char_p )
+
+###############################################################################
+## @brief Function-pointer for urProgramLinkExp
+if __use_win_types:
+    _urProgramLinkExp_t = WINFUNCTYPE( ur_result_t, ur_context_handle_t, c_ulong, POINTER(ur_program_handle_t), c_ulong, POINTER(ur_device_handle_t), c_char_p, POINTER(ur_program_handle_t) )
+else:
+    _urProgramLinkExp_t = CFUNCTYPE( ur_result_t, ur_context_handle_t, c_ulong, POINTER(ur_program_handle_t), c_ulong, POINTER(ur_device_handle_t), c_char_p, POINTER(ur_program_handle_t) )
+
 
 ###############################################################################
 ## @brief Table of ProgramExp functions pointers
 class ur_program_exp_dditable_t(Structure):
     _fields_ = [
-        ("pfnBuildExp", c_void_p)                                       ## _urProgramBuildExp_t
+        ("pfnBuildExp", c_void_p),                                      ## _urProgramBuildExp_t
+        ("pfnCompileExp", c_void_p),                                    ## _urProgramCompileExp_t
+        ("pfnLinkExp", c_void_p)                                        ## _urProgramLinkExp_t
     ]
 
 ###############################################################################
@@ -3782,6 +3800,8 @@ class UR_DDI:
 
         # attach function interface to function address
         self.urProgramBuildExp = _urProgramBuildExp_t(self.__dditable.ProgramExp.pfnBuildExp)
+        self.urProgramCompileExp = _urProgramCompileExp_t(self.__dditable.ProgramExp.pfnCompileExp)
+        self.urProgramLinkExp = _urProgramLinkExp_t(self.__dditable.ProgramExp.pfnLinkExp)
 
         # call driver to get function pointers
         Kernel = ur_kernel_dditable_t()

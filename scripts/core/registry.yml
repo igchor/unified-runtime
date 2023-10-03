@@ -505,6 +505,12 @@ etors:
 - name: PROGRAM_BUILD_EXP
   desc: Enumerator for $xProgramBuildExp
   value: '172'
+- name: PROGRAM_COMPILE_EXP
+  desc: Enumerator for $xProgramCompileExp
+  value: '173'
+- name: PROGRAM_LINK_EXP
+  desc: Enumerator for $xProgramLinkExp
+  value: '174'
 ---
 type: enum
 desc: Defines structure types

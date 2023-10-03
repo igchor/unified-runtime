@@ -1729,6 +1729,34 @@ __urdlllocal ur_result_t UR_APICALL urProgramCompile(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Intercept function for urProgramCompileExp
+__urdlllocal ur_result_t UR_APICALL urProgramCompileExp(
+    ur_context_handle_t hContext, ///< [in] handle of the context instance.
+    ur_program_handle_t
+        hProgram,        ///< [in][out] handle of the program to compile.
+    uint32_t numDevices, ///< [in] number of devices
+    ur_device_handle_t *
+        phDevices, ///< [in][range(0, numDevices)] pointer to array of device handles
+    const char *
+        pOptions ///< [in][optional] pointer to build options null-terminated string.
+    ) try {
+    ur_result_t result = UR_RESULT_SUCCESS;
+
+    // if the driver has created a custom function, then call it instead of using the generic path
+    auto pfnCompileExp = d_context.urDdiTable.ProgramExp.pfnCompileExp;
+    if (nullptr != pfnCompileExp) {
+        result =
+            pfnCompileExp(hContext, hProgram, numDevices, phDevices, pOptions);
+    } else {
+        // generic implementation
+    }
+
+    return result;
+} catch (...) {
+    return exceptionToResult(std::current_exception());
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief Intercept function for urProgramLink
 __urdlllocal ur_result_t UR_APICALL urProgramLink(
     ur_context_handle_t hContext, ///< [in] handle of the context instance.
@@ -1746,6 +1774,38 @@ __urdlllocal ur_result_t UR_APICALL urProgramLink(
     auto pfnLink = d_context.urDdiTable.Program.pfnLink;
     if (nullptr != pfnLink) {
         result = pfnLink(hContext, count, phPrograms, pOptions, phProgram);
+    } else {
+        // generic implementation
+        *phProgram = reinterpret_cast<ur_program_handle_t>(d_context.get());
+    }
+
+    return result;
+} catch (...) {
+    return exceptionToResult(std::current_exception());
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Intercept function for urProgramLinkExp
+__urdlllocal ur_result_t UR_APICALL urProgramLinkExp(
+    ur_context_handle_t hContext, ///< [in] handle of the context instance.
+    uint32_t count, ///< [in] number of program handles in `phPrograms`.
+    const ur_program_handle_t *
+        phPrograms, ///< [in][range(0, count)] pointer to array of program handles.
+    uint32_t numDevices, ///< [in] number of devices
+    ur_device_handle_t *
+        phDevices, ///< [in][range(0, numDevices)] pointer to array of device handles
+    const char *
+        pOptions, ///< [in][optional] pointer to linker options null-terminated string.
+    ur_program_handle_t
+        *phProgram ///< [out] pointer to handle of program object created.
+    ) try {
+    ur_result_t result = UR_RESULT_SUCCESS;
+
+    // if the driver has created a custom function, then call it instead of using the generic path
+    auto pfnLinkExp = d_context.urDdiTable.ProgramExp.pfnLinkExp;
+    if (nullptr != pfnLinkExp) {
+        result = pfnLinkExp(hContext, count, phPrograms, numDevices, phDevices,
+                            pOptions, phProgram);
     } else {
         // generic implementation
         *phProgram = reinterpret_cast<ur_program_handle_t>(d_context.get());
@@ -5539,6 +5599,10 @@ UR_DLLEXPORT ur_result_t UR_APICALL urGetProgramExpProcAddrTable(
     ur_result_t result = UR_RESULT_SUCCESS;
 
     pDdiTable->pfnBuildExp = driver::urProgramBuildExp;
+
+    pDdiTable->pfnCompileExp = driver::urProgramCompileExp;
+
+    pDdiTable->pfnLinkExp = driver::urProgramLinkExp;
 
     return result;
 } catch (...) {
