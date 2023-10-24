@@ -11,6 +11,13 @@
  * @brief C++ library for ur
  *
  */
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE /* needed for dladdr */
+#endif              /* _GNU_SOURCE */
+
+#include <dlfcn.h>
+
 #include "ur_lib.hpp"
 
 extern "C" {
@@ -189,6 +196,18 @@ ur_result_t UR_APICALL urInit(
         hLoaderConfig ///< [in][optional] Handle of loader config handle.
     ) try {
     static ur_result_t result = UR_RESULT_SUCCESS;
+
+    Dl_info dlinfo;
+    int res = dladdr(
+        (void *)&urInit,
+        &dlinfo);
+    if (!res) {
+        char const *err = dlerror();
+        printf("%s\n", err);
+        exit(1);
+    }
+
+    std::cout << "call_once: context from " << dlinfo.dli_fname << " " << ur_lib::context << std::endl;
     std::call_once(ur_lib::context->initOnce, [device_flags, hLoaderConfig]() {
         result = ur_lib::context->Init(device_flags, hLoaderConfig);
     });
