@@ -135,7 +135,6 @@ set_target_properties(${TARGET_NAME} PROPERTIES
 target_link_libraries(${TARGET_NAME} PRIVATE
     ${PROJECT_NAME}::headers
     ${PROJECT_NAME}::common
-    ${PROJECT_NAME}::unified_malloc_framework
     LevelZeroLoader
     LevelZeroLoader-Headers
 )
