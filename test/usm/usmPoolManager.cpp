@@ -3,8 +3,6 @@
 // See LICENSE.TXT
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "../unified_malloc_framework/common/pool.hpp"
-#include "../unified_malloc_framework/common/provider.hpp"
 #include "ur_pool_manager.hpp"
 
 #include <uur/fixtures.h>

@@ -9,8 +9,9 @@
 #ifndef USM_POOL_CONFIG
 #define USM_POOL_CONFIG
 
-#include "disjoint_pool.hpp"
+#include <pool/pool_disjoint.h>
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -21,7 +22,8 @@ enum DisjointPoolMemType { Host, Device, Shared, SharedReadOnly, All };
 class DisjointPoolAllConfigs {
   public:
     size_t EnableBuffers = 1;
-    DisjointPoolConfig Configs[DisjointPoolMemType::All];
+    std::shared_ptr<umf_disjoint_pool_shared_limits> limits;
+    umf_disjoint_pool_params Configs[DisjointPoolMemType::All];
 
     DisjointPoolAllConfigs();
 };

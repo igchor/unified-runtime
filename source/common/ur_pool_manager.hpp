@@ -11,9 +11,15 @@
 #ifndef USM_POOL_MANAGER_HPP
 #define USM_POOL_MANAGER_HPP 1
 
+#include "logger/ur_logger.hpp"
+#include "umf_helpers.hpp"
 #include "ur_api.h"
 #include "ur_pool_manager.hpp"
 #include "ur_util.hpp"
+
+#include <pool/pool_disjoint.h>
+#include <umf/memory_pool.h>
+#include <umf/memory_provider.h>
 
 #include <functional>
 #include <vector>
