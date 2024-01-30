@@ -18,7 +18,7 @@
 
 #include <umf/memory_pool.h>
 #include <umf/memory_provider.h>
-#include <umf/pools/pool_disjoint.h>
+#include <umf/pools/pool_jemalloc.h>
 
 #include <functional>
 #include <unordered_map>

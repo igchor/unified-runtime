@@ -24,7 +24,7 @@ message(STATUS "Download Unified Memory Framework from github.com")
 set(UMF_REPO "https://github.com/oneapi-src/unified-memory-framework.git")
 
 # Merge pull request #119 from ldorau/Fix_arena_extent_split_and_arena_extent_merge
-set(UMF_TAG 9bf7a0dc4dff76844e10edbb5c6e9d917536ef6d)
+set(UMF_TAG ff70a115b8e87fac66374b0130620b7f7f1da8f9)
 
 message(STATUS "Will fetch Unified Memory Framework from ${UMF_REPO}")
 
@@ -34,6 +34,8 @@ FetchContent_Declare(unified-memory-framework
     GIT_TAG           ${UMF_TAG}
 )
 
+set(UMF_BUILD_SHARED_LIBRARY ON CACHE INTERNAL "")
+set(CMAKE_BUILD_TYPE Debug CACHE INTERNAL "Build Disjoint Pool")
 set(UMF_BUILD_LIBUMF_POOL_DISJOINT ON CACHE INTERNAL "Build Disjoint Pool")
 set(UMF_BUILD_OS_MEMORY_PROVIDER OFF CACHE INTERNAL "Build OS Provider")
 

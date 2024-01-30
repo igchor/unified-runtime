@@ -384,8 +384,8 @@ ur_usm_pool_handle_t_::ur_usm_pool_handle_t_(ur_context_handle_t Context,
       const ur_usm_pool_limits_desc_t *Limits =
           reinterpret_cast<const ur_usm_pool_limits_desc_t *>(BaseDesc);
       for (auto &config : DisjointPoolConfigs.Configs) {
-        config.MaxPoolableSize = Limits->maxPoolableSize;
-        config.SlabMinSize = Limits->minDriverAllocSize;
+        //config.MaxPoolableSize = Limits->maxPoolableSize;
+        //config.SlabMinSize = Limits->minDriverAllocSize;
       }
       break;
     }
@@ -402,8 +402,8 @@ ur_usm_pool_handle_t_::ur_usm_pool_handle_t_(ur_context_handle_t Context,
 
   HostMemPool =
       umf::poolMakeUniqueFromOps(
-          &UMF_DISJOINT_POOL_OPS, std::move(MemProvider),
-          &this->DisjointPoolConfigs.Configs[usm::DisjointPoolMemType::Host])
+          &UMF_JEMALLOC_POOL_OPS, std::move(MemProvider),
+          nullptr)
           .second;
 
   auto Device = Context->DeviceID;
@@ -412,8 +412,8 @@ ur_usm_pool_handle_t_::ur_usm_pool_handle_t_(ur_context_handle_t Context,
           .second;
   DeviceMemPool =
       umf::poolMakeUniqueFromOps(
-          &UMF_DISJOINT_POOL_OPS, std::move(MemProvider),
-          &this->DisjointPoolConfigs.Configs[usm::DisjointPoolMemType::Device])
+          &UMF_JEMALLOC_POOL_OPS, std::move(MemProvider),
+          nullptr)
           .second;
 
   MemProvider =
@@ -421,8 +421,8 @@ ur_usm_pool_handle_t_::ur_usm_pool_handle_t_(ur_context_handle_t Context,
           .second;
   SharedMemPool =
       umf::poolMakeUniqueFromOps(
-          &UMF_DISJOINT_POOL_OPS, std::move(MemProvider),
-          &this->DisjointPoolConfigs.Configs[usm::DisjointPoolMemType::Shared])
+          &UMF_JEMALLOC_POOL_OPS, std::move(MemProvider),
+          nullptr)
           .second;
   Context->addPool(this);
 }

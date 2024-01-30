@@ -10,6 +10,7 @@
 #define USM_POOL_CONFIG
 
 #include <umf/pools/pool_disjoint.h>
+#include <umf/pools/pool_jemalloc.h>
 
 #include <memory>
 #include <string>

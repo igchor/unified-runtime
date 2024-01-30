@@ -190,9 +190,8 @@ ur_result_t ur_context_handle_t_::initialize() {
     DeviceMemPools.emplace(
         std::piecewise_construct, std::make_tuple(Device->ZeDevice),
         std::make_tuple(umf::poolMakeUniqueFromOps(
-                            &UMF_DISJOINT_POOL_OPS, std::move(MemProvider),
-                            &DisjointPoolConfigInstance
-                                 .Configs[usm::DisjointPoolMemType::Device])
+                            &UMF_JEMALLOC_POOL_OPS, std::move(MemProvider),
+                            nullptr)
                             .second));
 
     MemProvider = umf::memoryProviderMakeUnique<L0SharedMemoryProvider>(
@@ -201,9 +200,8 @@ ur_result_t ur_context_handle_t_::initialize() {
     SharedMemPools.emplace(
         std::piecewise_construct, std::make_tuple(Device->ZeDevice),
         std::make_tuple(umf::poolMakeUniqueFromOps(
-                            &UMF_DISJOINT_POOL_OPS, std::move(MemProvider),
-                            &DisjointPoolConfigInstance
-                                 .Configs[usm::DisjointPoolMemType::Shared])
+                            &UMF_JEMALLOC_POOL_OPS, std::move(MemProvider),
+                            nullptr)
                             .second));
 
     MemProvider = umf::memoryProviderMakeUnique<L0SharedReadOnlyMemoryProvider>(
@@ -213,9 +211,8 @@ ur_result_t ur_context_handle_t_::initialize() {
         std::piecewise_construct, std::make_tuple(Device->ZeDevice),
         std::make_tuple(
             umf::poolMakeUniqueFromOps(
-                &UMF_DISJOINT_POOL_OPS, std::move(MemProvider),
-                &DisjointPoolConfigInstance
-                     .Configs[usm::DisjointPoolMemType::SharedReadOnly])
+                &UMF_JEMALLOC_POOL_OPS, std::move(MemProvider),
+                nullptr)
                 .second));
 
     MemProvider = umf::memoryProviderMakeUnique<L0DeviceMemoryProvider>(
@@ -266,8 +263,8 @@ ur_result_t ur_context_handle_t_::initialize() {
                          .second;
   HostMemPool =
       umf::poolMakeUniqueFromOps(
-          &UMF_DISJOINT_POOL_OPS, std::move(MemProvider),
-          &DisjointPoolConfigInstance.Configs[usm::DisjointPoolMemType::Host])
+          &UMF_JEMALLOC_POOL_OPS, std::move(MemProvider),
+          nullptr)
           .second;
 
   MemProvider = umf::memoryProviderMakeUnique<L0HostMemoryProvider>(
