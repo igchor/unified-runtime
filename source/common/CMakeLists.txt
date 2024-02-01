@@ -47,6 +47,7 @@ target_link_libraries(ur_common PUBLIC
     unified-memory-framework::umf
     unified-memory-framework::headers
     unified-memory-framework::disjoint_pool
+    unified-memory-framework::jemalloc_pool
     ${CMAKE_DL_LIBS}
     ${PROJECT_NAME}::headers
 )
