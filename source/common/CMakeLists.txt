@@ -34,7 +34,6 @@ FetchContent_Declare(unified-memory-framework
     GIT_TAG           ${UMF_TAG}
 )
 
-set(UMF_BUILD_SHARED_LIBRARY ON CACHE INTERNAL "")
 set(UMF_BUILD_LIBUMF_POOL_JEMALLOC ON CACHE INTERNAL "Build Disjoint Pool")
 set(UMF_BUILD_LIBUMF_POOL_DISJOINT ON CACHE INTERNAL "Build Disjoint Pool")
 set(UMF_BUILD_OS_MEMORY_PROVIDER OFF CACHE INTERNAL "Build OS Provider")
