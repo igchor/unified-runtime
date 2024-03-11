@@ -25,8 +25,8 @@ if (NOT DEFINED UMF_REPO)
 endif()
 
 if (NOT DEFINED UMF_TAG)
-    # Merge pull request #119 from ldorau/Fix_arena_extent_split_and_arena_extent_merge
-    set(UMF_TAG 9bf7a0dc4dff76844e10edbb5c6e9d917536ef6d)
+    # Merge pull request #320 from ldorau/Enable_the_proxy_library_on_Windows
+    set(UMF_TAG fad47c36924bf676a30abaccc053a4da7efcf6e9)
 endif()
 
 message(STATUS "Will fetch Unified Memory Framework from ${UMF_REPO}")
@@ -42,8 +42,10 @@ if(UR_BUILD_TESTS)
 else()
     set(UMF_BUILD_TESTS OFF CACHE INTERNAL "Build UMF tests")
 endif()
+# TODO: L0 provider not ready yet
+set(UMF_BUILD_LEVEL_ZERO_PROVIDER OFF CACHE INTERNAL "Build Level Zero Provider")
+set(UMF_BUILD_SHARED_LIBRARY ON CACHE INTERNAL "Build UMF shared library")
 set(UMF_BUILD_LIBUMF_POOL_DISJOINT ON CACHE INTERNAL "Build Disjoint Pool")
-set(UMF_BUILD_OS_MEMORY_PROVIDER OFF CACHE INTERNAL "Build OS Provider")
 
 FetchContent_MakeAvailable(unified-memory-framework)
 FetchContent_GetProperties(unified-memory-framework)
