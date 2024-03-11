@@ -46,7 +46,7 @@ endif()
 set(UMF_BUILD_LEVEL_ZERO_PROVIDER OFF CACHE INTERNAL "Build Level Zero Provider")
 set(UMF_BUILD_SHARED_LIBRARY ON CACHE INTERNAL "Build UMF shared library")
 set(UMF_BUILD_LIBUMF_POOL_DISJOINT ON CACHE INTERNAL "Build Disjoint Pool")
-set(UMF_BUILD_OS_MEMORY_PROVIDER OFF CACHE INTERNAL "Build OS Provider")
+set(UMF_BUILD_OS_MEMORY_PROVIDER ON CACHE INTERNAL "Build OS Provider")
 
 FetchContent_MakeAvailable(unified-memory-framework)
 FetchContent_GetProperties(unified-memory-framework)
