@@ -146,40 +146,32 @@ auto poolMakeUnique(provider_unique_handle_t provider, Args &&...args) {
     auto argsTuple = std::make_tuple(std::forward<Args>(args)...);
     auto ops = detail::poolMakeUniqueOps<T, decltype(argsTuple)>();
 
-    auto hProvider = provider.release();
-
-    // capture providers and destroy them after the pool is destroyed
-    auto poolDestructor = [hProvider](umf_memory_pool_handle_t hPool) {
-        umfPoolDestroy(hPool);
-        umfMemoryProviderDestroy(hProvider);
-    };
-
     umf_memory_pool_handle_t hPool = nullptr;
-    auto ret = umfPoolCreate(&ops, hProvider, &argsTuple, &hPool);
+
+    auto ret = umfPoolCreate(&ops, provider.get(), &argsTuple,
+                             UMF_POOL_CREATE_FLAG_OWN_PROVIDER, &hPool);
+    if (ret == UMF_RESULT_SUCCESS) {
+        provider.release(); // pool now owns the provider
+    }
     return std::pair<umf_result_t, pool_unique_handle_t>{
-        ret, pool_unique_handle_t(hPool, std::move(poolDestructor))};
+        ret, pool_unique_handle_t(hPool, umfPoolDestroy)};
 }
 
 static inline auto poolMakeUniqueFromOps(umf_memory_pool_ops_t *ops,
                                          provider_unique_handle_t provider,
                                          void *params) {
     umf_memory_pool_handle_t hPool;
-    auto ret = umfPoolCreate(ops, provider.get(), params, &hPool);
+    auto ret = umfPoolCreate(ops, provider.get(), params,
+                             UMF_POOL_CREATE_FLAG_OWN_PROVIDER, &hPool);
     if (ret != UMF_RESULT_SUCCESS) {
         return std::pair<umf_result_t, pool_unique_handle_t>{
             ret, pool_unique_handle_t(nullptr, nullptr)};
     }
 
-    // capture provider and destroy it after the pool is destroyed
-    auto poolDestructor =
-        [provider_handle = provider.release()](umf_memory_pool_handle_t pool) {
-            umfPoolDestroy(pool);
-            umfMemoryProviderDestroy(provider_handle);
-        };
+    provider.release(); // pool now owns the provider
 
     return std::pair<umf_result_t, pool_unique_handle_t>{
-        UMF_RESULT_SUCCESS,
-        pool_unique_handle_t(hPool, std::move(poolDestructor))};
+        UMF_RESULT_SUCCESS, pool_unique_handle_t(hPool, umfPoolDestroy)};
 }
 
 template <typename Type> umf_result_t &getPoolLastStatusRef() {
