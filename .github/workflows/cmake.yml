@@ -44,7 +44,7 @@ jobs:
     - name: Install apt packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y doxygen ${{matrix.compiler.c}}
+        sudo apt-get install -y libhwloc-dev doxygen ${{matrix.compiler.c}}
 
     - name: Install g++-7
       if: matrix.compiler.cxx == 'g++-7'
@@ -130,6 +130,11 @@ jobs:
     - name: Install pip packages
       run: pip install -r third_party/requirements.txt
 
+    - name: Install apt packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhwloc-dev
+
     - name: Download DPC++
       run: |
         sudo apt install libncurses5
@@ -182,6 +187,11 @@ jobs:
 
     - name: Install pip packages
       run: pip install -r third_party/requirements.txt
+
+    - name: Install apt packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhwloc-dev
 
     - name: Download DPC++
       run: |
@@ -240,6 +250,11 @@ jobs:
 
     - name: Install pip packages
       run: pip install -r third_party/requirements.txt
+
+    - name: Install apt packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhwloc-dev
     
     - name: Init conda env
       uses: conda-incubator/setup-miniconda@9f54435e0e72c53962ee863144e47a4b094bfd35 # v2.3.0
@@ -317,6 +332,14 @@ jobs:
         Invoke-WebRequest -Uri https://github.com/doxygen/doxygen/releases/download/Release_1_9_8/doxygen-1.9.8.windows.x64.bin.zip -OutFile "$WorkingDir\doxygen.zip"
         Expand-Archive -Path "$WorkingDir\doxygen.zip"
         Add-Content $env:GITHUB_PATH "$WorkingDir\doxygen"
+
+    - name: Install hwloc
+      run: |
+        $WorkingDir = $PWD.Path
+        Invoke-WebRequest -Uri https://download.open-mpi.org/release/hwloc/v2.9/hwloc-win64-build-2.9.3.zip -OutFile "$WorkingDir\hwloc.zip"
+        Expand-Archive -Path "$WorkingDir\hwloc.zip"
+        Add-Content $env:GITHUB_PATH "$WorkingDir\hwloc"
+        $env:PKG_CONFIG_PATH = "$WorkingDir\hwloc\lib\pkgconfig"
 
     - name: Configure CMake
       run: >
