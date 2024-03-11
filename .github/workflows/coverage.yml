@@ -24,7 +24,7 @@ jobs:
     - name: Install apt packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y doxygen ${{matrix.compiler.c}}
+        sudo apt-get install -y libhwloc-dev doxygen ${{matrix.compiler.c}}
 
     - name: Install pip packages
       run: pip install -r third_party/requirements.txt
