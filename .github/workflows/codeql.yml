@@ -67,14 +67,11 @@ jobs:
       run: python3 -m pip install -r third_party/requirements.txt
 
     - name: Install hwloc
-      run: |
-        $WorkingDir = $PWD.Path
-        Invoke-WebRequest -Uri https://download.open-mpi.org/release/hwloc/v2.9/hwloc-win64-build-2.9.3.zip -OutFile "$WorkingDir\hwloc.zip"
-        Expand-Archive -Path "$WorkingDir\hwloc.zip"
-        Add-Content $env:GITHUB_PATH "$WorkingDir\hwloc"
-        $env:PKG_CONFIG_PATH = "$WorkingDir\hwloc\lib\pkgconfig"
+      run: vcpkg install hwloc:x64-windows
 
     - name: Configure CMake
+      env:
+        PKG_CONFIG_PATH: "C:/vcpkg/packages/hwloc_x64-windows/lib/pkgconfig/"
       run: cmake -B ${{github.workspace}}/build -DCMAKE_POLICY_DEFAULT_CMP0094=NEW -DUR_DEVELOPER_MODE=ON -DUR_BUILD_TESTS=ON -DUR_ENABLE_TRACING=ON -DUR_BUILD_TOOLS=ON -DUMF_ENABLE_POOL_TRACKING=ON
 
     - name: Build
