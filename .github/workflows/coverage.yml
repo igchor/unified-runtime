@@ -14,7 +14,6 @@ jobs:
         build_type: [Debug]
         compiler: [{c: gcc, cxx: g++}]
         libbacktrace: ['-DVAL_USE_LIBBACKTRACE_BACKTRACE=ON']
-        pool_tracking: ['-DUMF_ENABLE_POOL_TRACKING=ON']
 
     runs-on: ${{matrix.os}}
 
@@ -61,7 +60,6 @@ jobs:
         -DCMAKE_EXE_LINKER_FLAGS="--coverage"
         -DCMAKE_SHARED_LINKER_FLAGS="--coverage"
         ${{matrix.libbacktrace}}
-        ${{matrix.pool_tracking}}
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j $(nproc)

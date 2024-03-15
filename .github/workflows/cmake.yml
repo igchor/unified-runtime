@@ -18,7 +18,6 @@ jobs:
         build_type: [Debug, Release]
         compiler: [{c: gcc, cxx: g++}]
         libbacktrace: ['-DVAL_USE_LIBBACKTRACE_BACKTRACE=OFF']
-        pool_tracking: ['-DUMF_ENABLE_POOL_TRACKING=ON', '-DUMF_ENABLE_POOL_TRACKING=OFF']
         include:
           - os: 'ubuntu-22.04'
             build_type: Release
@@ -85,7 +84,6 @@ jobs:
         -DUR_FORMAT_CPP_STYLE=ON
         -DUR_DPCXX=${{github.workspace}}/dpcpp_compiler/bin/clang++
         ${{matrix.libbacktrace}}
-        ${{matrix.pool_tracking}}
 
     - name: Configure CMake
       if: matrix.os == 'ubuntu-20.04'
@@ -99,7 +97,6 @@ jobs:
         -DUR_BUILD_TESTS=ON
         -DUR_FORMAT_CPP_STYLE=ON
         ${{matrix.libbacktrace}}
-        ${{matrix.pool_tracking}}
 
     - name: Generate source from spec, check for uncommitted diff
       if: matrix.os == 'ubuntu-22.04'
@@ -387,6 +384,5 @@ jobs:
         -DCMAKE_BUILD_TYPE=Release
         -DUR_BUILD_TESTS=ON
         -DUR_FORMAT_CPP_STYLE=ON
-        -DUMF_ENABLE_POOL_TRACKING=ON
     - name: Build
       run: cmake --build ${{github.workspace}}/build -j $(sysctl -n hw.logicalcpu)
