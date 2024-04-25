@@ -24,6 +24,7 @@
 
 #include "common.hpp"
 #include "queue.hpp"
+#include "event_pool.hpp"
 
 #include <umf_helpers.hpp>
 
@@ -130,49 +131,8 @@ struct ur_context_handle_t_ : _ur_object {
   // when kernel has finished execution.
   std::unordered_map<void *, MemAllocRecord> MemAllocs;
 
-  // Following member variables are used to manage assignment of events
-  // to event pools.
-  //
-  // TODO: Create ur_event_pool class to encapsulate working with pools.
-  // This will avoid needing the use of maps below, and cleanup the
-  // ur_context_handle_t overall.
-  //
-
-  // The cache of event pools from where new events are allocated from.
-  // The head event pool is where the next event would be added to if there
-  // is still some room there. If there is no room in the head then
-  // the following event pool is taken (guranteed to be empty) and made the
-  // head. In case there is no next pool, a new pool is created and made the
-  // head.
-  //
-  // Cache of event pools to which host-visible events are added to.
-  std::vector<std::list<ze_event_pool_handle_t>> ZeEventPoolCache{4};
-  std::vector<std::unordered_map<ze_device_handle_t, size_t>>
-      ZeEventPoolCacheDeviceMap{4};
-
-  // This map will be used to determine if a pool is full or not
-  // by storing number of empty slots available in the pool.
-  std::unordered_map<ze_event_pool_handle_t, uint32_t>
-      NumEventsAvailableInEventPool;
-  // This map will be used to determine number of unreleased events in the pool.
-  // We use separate maps for number of event slots available in the pool from
-  // the number of events unreleased in the pool.
-  // This will help when we try to make the code thread-safe.
-  std::unordered_map<ze_event_pool_handle_t, uint32_t>
-      NumEventsUnreleasedInEventPool;
-
-  // Mutex to control operations on event pool caches and the helper maps
-  // holding the current pool usage counts.
-  ur_mutex ZeEventPoolCacheMutex;
-
-  // Mutex to control operations on event caches.
-  ur_mutex EventCacheMutex;
-
-  // Caches for events.
-  using EventCache = std::vector<std::list<ur_event_handle_t>>;
-  EventCache EventCaches{4};
-  std::vector<std::unordered_map<ur_device_handle_t, size_t>>
-      EventCachesDeviceMap{4};
+  // Handles event creation and caching
+  ur_event_pool_t EventPool;
 
   // Initialize the PI context.
   ur_result_t initialize();
@@ -191,61 +151,6 @@ struct ur_context_handle_t_ : _ur_object {
 
   // Return the Platform, which is the same for all devices in the context
   ur_platform_handle_t getPlatform() const;
-
-  // Get index of the free slot in the available pool. If there is no available
-  // pool then create new one. The HostVisible parameter tells if we need a
-  // slot for a host-visible event. The ProfilingEnabled tells is we need a
-  // slot for an event with profiling capabilities.
-  ur_result_t getFreeSlotInExistingOrNewPool(ze_event_pool_handle_t &, size_t &,
-                                             bool HostVisible,
-                                             bool ProfilingEnabled,
-                                             ur_device_handle_t Device);
-
-  // Get ur_event_handle_t from cache.
-  ur_event_handle_t getEventFromContextCache(bool HostVisible,
-                                             bool WithProfiling,
-                                             ur_device_handle_t Device);
-
-  // Add ur_event_handle_t to cache.
-  void addEventToContextCache(ur_event_handle_t);
-
-  std::list<ze_event_pool_handle_t> *
-  getZeEventPoolCache(bool HostVisible, bool WithProfiling,
-                      ze_device_handle_t ZeDevice) {
-    if (HostVisible) {
-      if (ZeDevice) {
-        auto ZeEventPoolCacheMap = WithProfiling
-                                       ? &ZeEventPoolCacheDeviceMap[0]
-                                       : &ZeEventPoolCacheDeviceMap[1];
-        if (ZeEventPoolCacheMap->find(ZeDevice) == ZeEventPoolCacheMap->end()) {
-          ZeEventPoolCache.emplace_back();
-          ZeEventPoolCacheMap->insert(
-              std::make_pair(ZeDevice, ZeEventPoolCache.size() - 1));
-        }
-        return &ZeEventPoolCache[(*ZeEventPoolCacheMap)[ZeDevice]];
-      } else {
-        return WithProfiling ? &ZeEventPoolCache[0] : &ZeEventPoolCache[1];
-      }
-    } else {
-      if (ZeDevice) {
-        auto ZeEventPoolCacheMap = WithProfiling
-                                       ? &ZeEventPoolCacheDeviceMap[2]
-                                       : &ZeEventPoolCacheDeviceMap[3];
-        if (ZeEventPoolCacheMap->find(ZeDevice) == ZeEventPoolCacheMap->end()) {
-          ZeEventPoolCache.emplace_back();
-          ZeEventPoolCacheMap->insert(
-              std::make_pair(ZeDevice, ZeEventPoolCache.size() - 1));
-        }
-        return &ZeEventPoolCache[(*ZeEventPoolCacheMap)[ZeDevice]];
-      } else {
-        return WithProfiling ? &ZeEventPoolCache[2] : &ZeEventPoolCache[3];
-      }
-    }
-  }
-
-  // Decrement number of events living in the pool upon event destroy
-  // and return the pool to the cache if there are no unreleased events.
-  ur_result_t decrementUnreleasedEventsInPool(ur_event_handle_t Event);
 
   // Retrieves a command list for executing on this device along with
   // a fence to be used in tracking the execution of this command list.
@@ -276,39 +181,6 @@ struct ur_context_handle_t_ : _ur_object {
   // Checks if Device is covered by this context.
   // For that the Device or its root devices need to be in the context.
   bool isValidDevice(ur_device_handle_t Device) const;
-
-private:
-  // Get the cache of events for a provided scope and profiling mode.
-  auto getEventCache(bool HostVisible, bool WithProfiling,
-                     ur_device_handle_t Device) {
-    if (HostVisible) {
-      if (Device) {
-        auto EventCachesMap =
-            WithProfiling ? &EventCachesDeviceMap[0] : &EventCachesDeviceMap[1];
-        if (EventCachesMap->find(Device) == EventCachesMap->end()) {
-          EventCaches.emplace_back();
-          EventCachesMap->insert(
-              std::make_pair(Device, EventCaches.size() - 1));
-        }
-        return &EventCaches[(*EventCachesMap)[Device]];
-      } else {
-        return WithProfiling ? &EventCaches[0] : &EventCaches[1];
-      }
-    } else {
-      if (Device) {
-        auto EventCachesMap =
-            WithProfiling ? &EventCachesDeviceMap[2] : &EventCachesDeviceMap[3];
-        if (EventCachesMap->find(Device) == EventCachesMap->end()) {
-          EventCaches.emplace_back();
-          EventCachesMap->insert(
-              std::make_pair(Device, EventCaches.size() - 1));
-        }
-        return &EventCaches[(*EventCachesMap)[Device]];
-      } else {
-        return WithProfiling ? &EventCaches[2] : &EventCaches[3];
-      }
-    }
-  }
 };
 
 // Helper function to release the context, a caller must lock the platform-level

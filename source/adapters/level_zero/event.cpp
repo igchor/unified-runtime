@@ -761,7 +761,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urExtEventCreate(
     ur_event_handle_t
         *Event ///< [out] pointer to the handle of the event object created.
 ) {
-  UR_CALL(EventCreate(Context, nullptr, false, true, Event));
+  UR_CALL(Context->EventPool.EventCreate( nullptr, false, true, Event));
 
   (*Event)->RefCountExternal++;
   ZE2UR_CALL(zeEventHostSignal, ((*Event)->ZeEvent));
@@ -779,7 +779,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEventCreateWithNativeHandle(
   // we dont have urEventCreate, so use this check for now to know that
   // the call comes from urEventCreate()
   if (NativeEvent == nullptr) {
-    UR_CALL(EventCreate(Context, nullptr, false, true, Event));
+    UR_CALL(Context->EventPool.EventCreate( nullptr, false, true, Event));
 
     (*Event)->RefCountExternal++;
     ZE2UR_CALL(zeEventHostSignal, ((*Event)->ZeEvent));
@@ -851,34 +851,14 @@ ur_result_t urEventReleaseInternal(ur_event_handle_t Event) {
     delete ProfilingPtr;
     Event->CommandData = nullptr;
   }
-  if (Event->OwnNativeHandle) {
-    if (DisableEventsCaching) {
-      auto ZeResult = ZE_CALL_NOCHECK(zeEventDestroy, (Event->ZeEvent));
-      // Gracefully handle the case that L0 was already unloaded.
-      if (ZeResult && ZeResult != ZE_RESULT_ERROR_UNINITIALIZED)
-        return ze2urResult(ZeResult);
-      auto Context = Event->Context;
-      if (auto Res = Context->decrementUnreleasedEventsInPool(Event))
-        return Res;
-    }
-  }
-  // It is possible that host-visible event was never created.
-  // In case it was check if that's different from this same event
-  // and release a reference to it.
-  if (Event->HostVisibleEvent && Event->HostVisibleEvent != Event) {
-    // Decrement ref-count of the host-visible proxy event.
-    UR_CALL(urEventReleaseInternal(Event->HostVisibleEvent));
-  }
 
   // Save pointer to the queue before deleting/resetting event.
   // When we add an event to the cache we need to check whether profiling is
   // enabled or not, so we access properties of the queue and that's why queue
   // must released later.
   auto Queue = Event->UrQueue;
-  if (DisableEventsCaching || !Event->OwnNativeHandle) {
-    delete Event;
-  } else {
-    Event->Context->addEventToContextCache(Event);
+  if (Event->OwnNativeHandle) {
+    UR_CALL(Context->EventPool.EventDestroy(Event));
   }
 
   // We intentionally incremented the reference counter when an event is
@@ -1047,75 +1027,6 @@ ur_result_t CleanupCompletedEvent(ur_event_handle_t Event, bool QueueLocked,
     }
     UR_CALL(urEventReleaseInternal(DepEvent));
   }
-
-  return UR_RESULT_SUCCESS;
-}
-
-// Helper function for creating a PI event.
-// The "Queue" argument specifies the PI queue where a command is submitted.
-// The "HostVisible" argument specifies if event needs to be allocated from
-// a host-visible pool.
-//
-ur_result_t EventCreate(ur_context_handle_t Context, ur_queue_handle_t Queue,
-                        bool IsMultiDevice, bool HostVisible,
-                        ur_event_handle_t *RetEvent) {
-
-  bool ProfilingEnabled = !Queue || Queue->isProfilingEnabled();
-
-  ur_device_handle_t Device = nullptr;
-
-  if (!IsMultiDevice && Queue) {
-    Device = Queue->Device;
-  }
-
-  if (auto CachedEvent = Context->getEventFromContextCache(
-          HostVisible, ProfilingEnabled, Device)) {
-    *RetEvent = CachedEvent;
-    return UR_RESULT_SUCCESS;
-  }
-
-  ze_event_handle_t ZeEvent;
-  ze_event_pool_handle_t ZeEventPool = {};
-
-  size_t Index = 0;
-
-  if (auto Res = Context->getFreeSlotInExistingOrNewPool(
-          ZeEventPool, Index, HostVisible, ProfilingEnabled, Device))
-    return Res;
-
-  ZeStruct<ze_event_desc_t> ZeEventDesc;
-  ZeEventDesc.index = Index;
-  ZeEventDesc.wait = 0;
-
-  if (HostVisible) {
-    ZeEventDesc.signal = ZE_EVENT_SCOPE_FLAG_HOST;
-  } else {
-    //
-    // Set the scope to "device" for every event. This is sufficient for
-    // global device access and peer device access. If needed to be seen on
-    // the host we are doing special handling, see EventsScope options.
-    //
-    // TODO: see if "sub-device" (ZE_EVENT_SCOPE_FLAG_SUBDEVICE) can better be
-    //       used in some circumstances.
-    //
-    ZeEventDesc.signal = 0;
-  }
-
-  ZE2UR_CALL(zeEventCreate, (ZeEventPool, &ZeEventDesc, &ZeEvent));
-
-  try {
-    *RetEvent = new ur_event_handle_t_(
-        ZeEvent, ZeEventPool, reinterpret_cast<ur_context_handle_t>(Context),
-        UR_EXT_COMMAND_TYPE_USER, true);
-  } catch (const std::bad_alloc &) {
-    return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
-  } catch (...) {
-    return UR_RESULT_ERROR_UNKNOWN;
-  }
-
-  if (HostVisible)
-    (*RetEvent)->HostVisibleEvent =
-        reinterpret_cast<ur_event_handle_t>(*RetEvent);
 
   return UR_RESULT_SUCCESS;
 }

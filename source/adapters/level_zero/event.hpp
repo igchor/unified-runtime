@@ -29,22 +29,7 @@
 
 extern "C" {
 ur_result_t urEventReleaseInternal(ur_event_handle_t Event);
-ur_result_t EventCreate(ur_context_handle_t Context, ur_queue_handle_t Queue,
-                        bool IsMultiDevice, bool HostVisible,
-                        ur_event_handle_t *RetEvent);
 } // extern "C"
-
-// This is an experimental option that allows to disable caching of events in
-// the context.
-const bool DisableEventsCaching = [] {
-  const char *UrRet = std::getenv("UR_L0_DISABLE_EVENTS_CACHING");
-  const char *PiRet = std::getenv("SYCL_PI_LEVEL_ZERO_DISABLE_EVENTS_CACHING");
-  const char *DisableEventsCachingFlag =
-      UrRet ? UrRet : (PiRet ? PiRet : nullptr);
-  if (!DisableEventsCachingFlag)
-    return false;
-  return std::atoi(DisableEventsCachingFlag) != 0;
-}();
 
 // This is an experimental option that allows reset and reuse of uncompleted
 // events in the in-order queue with discard_events property.

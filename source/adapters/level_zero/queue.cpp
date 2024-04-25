@@ -104,7 +104,7 @@ ur_result_t ur_completion_batch::seal(ur_queue_handle_t queue,
   assert(st == ACCUMULATING);
 
   if (!barrierEvent) {
-    UR_CALL(EventCreate(queue->Context, queue, false, true, &barrierEvent));
+    UR_CALL(queue->Context->EventPool.EventCreate( queue, false, true, &barrierEvent));
   }
 
   // Instead of collecting all the batched events, we simply issue a global
@@ -1752,7 +1752,7 @@ ur_result_t createEventAndAssociateQueue(ur_queue_handle_t Queue,
                       : nullptr;
 
   if (*Event == nullptr)
-    UR_CALL(EventCreate(Queue->Context, Queue, IsMultiDevice,
+    UR_CALL(Queue->Context->EventPool.EventCreate( Queue, IsMultiDevice,
                         HostVisible.value(), Event));
 
   (*Event)->UrQueue = Queue;
