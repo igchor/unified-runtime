@@ -67,19 +67,22 @@ struct ur_device_handle_t_ : _ur_object {
     // zeDeviceGetCommandQueueGroupProperties. A value of "-1" means that
     // there is no such queue group available in the Level Zero runtime.
     int32_t ZeOrdinal{-1};
+    // TODO: replace this with optional on entire queue_group_info_t;
 
-    // Keep the index of the specific queue in this queue group where
-    // all the command enqueues of the corresponding type should go to.
-    // The value of "-1" means that no hard binding is defined and
-    // implementation can choose specific queue index on its own.
-    int32_t ZeIndex{-1};
+    // Represent range of allowed queue indices for this queue group.
+    uint32_t UpperIndex{0};
+    uint32_t LowerIndex{0};
+
+    size_t numUsableQueues() const {
+      return UpperIndex - LowerIndex + 1;
+    }
 
     // Keeps the queue group properties.
     ZeStruct<ze_command_queue_group_properties_t> ZeProperties;
   };
 
-  std::vector<queue_group_info_t> QueueGroup =
-      std::vector<queue_group_info_t>(queue_group_info_t::Size);
+  using all_queue_groups_t = std::vector<queue_group_info_t>;
+  all_queue_groups_t QueueGroup = all_queue_groups_t(queue_group_info_t::Size);
 
   // This returns "true" if a main copy engine is available for use.
   bool hasMainCopyEngine() const {
@@ -197,4 +200,7 @@ struct ur_device_handle_t_ : _ur_object {
   ZeCache<struct ze_global_memsize> ZeGlobalMemSize;
   ZeCache<ZeStruct<ze_mutable_command_list_exp_properties_t>>
       ZeDeviceMutableCmdListsProperties;
+
+private:
+  const std::pair<int, int> getRangeOfAllowedCopyEngines();
 };

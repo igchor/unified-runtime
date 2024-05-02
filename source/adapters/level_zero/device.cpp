@@ -980,7 +980,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGetInfo(
 // the copy engines will not be used at all. A value of 1 indicates that all
 // available copy engines can be used.
 const std::pair<int, int>
-getRangeOfAllowedCopyEngines(const ur_device_handle_t &Device) {
+ur_device_handle_t_::getRangeOfAllowedCopyEngines() {
   const char *UrRet = std::getenv("UR_L0_USE_COPY_ENGINE");
   const char *PiRet = std::getenv("SYCL_PI_LEVEL_ZERO_USE_COPY_ENGINE");
   static const char *EnvVar = UrRet ? UrRet : (PiRet ? PiRet : nullptr);
@@ -988,7 +988,7 @@ getRangeOfAllowedCopyEngines(const ur_device_handle_t &Device) {
   // immediate commandlists are being used. For standard commandlists all are
   // used.
   if (!EnvVar) {
-    if (Device->ImmCommandListUsed)
+    if (ImmCommandListUsed)
       return std::pair<int, int>(0, 0); // Only main copy engine will be used.
     return std::pair<int, int>(0, INT_MAX); // All copy engines will be used.
   }
@@ -1012,12 +1012,6 @@ getRangeOfAllowedCopyEngines(const ur_device_handle_t &Device) {
     UpperCopyEngineIndex = INT_MAX;
   }
   return std::pair<int, int>(LowerCopyEngineIndex, UpperCopyEngineIndex);
-}
-
-bool CopyEngineRequested(const ur_device_handle_t &Device) {
-  int LowerCopyQueueIndex = getRangeOfAllowedCopyEngines(Device).first;
-  int UpperCopyQueueIndex = getRangeOfAllowedCopyEngines(Device).second;
-  return ((LowerCopyQueueIndex != -1) || (UpperCopyQueueIndex != -1));
 }
 
 // Whether immediate commandlists will be used for kernel launches and copies.
@@ -1083,6 +1077,30 @@ bool ur_device_handle_t_::useDriverInOrderLists() {
   }();
 
   return UseDriverInOrderLists;
+}
+
+// UR_L0_LEVEL_ZERO_USE_COMPUTE_ENGINE can be set to an integer (>=0) in
+// which case all compute commands will be submitted to the command-queue
+// with the given index in the compute command group. If it is instead set
+// to negative then all available compute engines may be used.
+//
+// The default value is "0".
+//
+static const std::pair<int, int> getRangeOfAllowedComputeEngines() {
+  const char *UrRet = std::getenv("UR_L0_USE_COMPUTE_ENGINE");
+  const char *PiRet = std::getenv("SYCL_PI_LEVEL_ZERO_USE_COMPUTE_ENGINE");
+  const char *EnvVar = UrRet ? UrRet : (PiRet ? PiRet : nullptr);
+  // If the environment variable is not set only use "0" CCS for now.
+  // TODO: allow all CCSs when HW support is complete.
+  if (!EnvVar)
+    return std::pair<int, int>(0, 0);
+
+  auto EnvVarValue = std::atoi(EnvVar);
+  if (EnvVarValue >= 0) {
+    return std::pair<int, int>(EnvVarValue, EnvVarValue);
+  }
+
+  return std::pair<int, int>(0, INT_MAX);
 }
 
 ur_result_t ur_device_handle_t_::initialize(int SubSubDeviceOrdinal,
@@ -1192,6 +1210,9 @@ ur_result_t ur_device_handle_t_::initialize(int SubSubDeviceOrdinal,
           i;
       QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute]
           .ZeProperties = QueueGroupProperties[i];
+
+      std::tie(QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute].LowerIndex, QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute].UpperIndex) =
+        getRangeOfAllowedComputeEngines();
       break;
     }
   }
@@ -1203,7 +1224,7 @@ ur_result_t ur_device_handle_t_::initialize(int SubSubDeviceOrdinal,
   if (SubSubDeviceOrdinal >= 0) {
     QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute].ZeOrdinal =
         SubSubDeviceOrdinal;
-    QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute].ZeIndex =
+    QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute].LowerIndex = QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute].UpperIndex =
         SubSubDeviceIndex;
   } else { // Proceed with initialization for root and sub-device
            // How is it possible that there are no "compute" capabilities?
@@ -1212,20 +1233,29 @@ ur_result_t ur_device_handle_t_::initialize(int SubSubDeviceOrdinal,
       return UR_RESULT_ERROR_UNKNOWN;
     }
 
-    if (CopyEngineRequested((ur_device_handle_t)this)) {
+  auto [LowerCopyQueueIndex, UpperCopyQueueIndex] =
+      getRangeOfAllowedCopyEngines();
+  auto CopyEngineRequested = ((LowerCopyQueueIndex != -1) || (UpperCopyQueueIndex != -1));
+  auto MainCopyEngineIndex = 0;
+  auto MainCopyEngineCanBeUsed = MainCopyEngineIndex >= LowerCopyQueueIndex && MainCopyEngineIndex <= UpperCopyQueueIndex;
+
+    if (CopyEngineRequested) {
       for (uint32_t i = 0; i < numQueueGroups; i++) {
         if (((QueueGroupProperties[i].flags &
               ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COMPUTE) == 0) &&
             (QueueGroupProperties[i].flags &
              ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COPY)) {
-          if (QueueGroupProperties[i].numQueues == 1) {
+          if (QueueGroupProperties[i].numQueues == 1 && MainCopyEngineCanBeUsed) {
             QueueGroup[queue_group_info_t::MainCopy].ZeOrdinal = i;
             QueueGroup[queue_group_info_t::MainCopy].ZeProperties =
                 QueueGroupProperties[i];
-          } else {
+            QueueGroup[queue_group_info_t::MainCopy].UpperIndex = QueueGroup[queue_group_info_t::MainCopy].LowerIndex = MainCopyEngineIndex;
+          } else if (LowerCopyQueueIndex > MainCopyEngineIndex && UpperCopyQueueIndex >= LowerCopyQueueIndex) {
             QueueGroup[queue_group_info_t::LinkCopy].ZeOrdinal = i;
             QueueGroup[queue_group_info_t::LinkCopy].ZeProperties =
                 QueueGroupProperties[i];
+            QueueGroup[queue_group_info_t::LinkCopy].LowerIndex = LowerCopyQueueIndex;
+            QueueGroup[queue_group_info_t::LinkCopy].UpperIndex = UpperCopyQueueIndex;
             break;
           }
         }

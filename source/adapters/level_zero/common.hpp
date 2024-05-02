@@ -424,10 +424,6 @@ const bool ExposeCSliceInAffinityPartitioning = [] {
   return Flag ? std::atoi(Flag) != 0 : false;
 }();
 
-// TODO: make it into a ur_device_handle_t class member
-const std::pair<int, int>
-getRangeOfAllowedCopyEngines(const ur_device_handle_t &Device);
-
 class ZeUSMImportExtension {
   // Pointers to functions that import/release host memory into USM
   ze_result_t (*zexDriverImportExternalPointer)(ze_driver_handle_t hDriver,

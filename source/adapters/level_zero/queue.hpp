@@ -223,117 +223,100 @@ using ur_command_list_map_t =
 // The iterator pointing to a specific command-list in use.
 using ur_command_list_ptr_t = ur_command_list_map_t::iterator;
 
+struct ur_immediate_command_list_t {
+  ze_command_list_handle_t ZeCommandList;
+  ZeStruct<ze_command_queue_desc_t> ZeQueueDesc;
+};
+
+struct ur_batched_command_list_t {
+  ze_command_list_handle_t ZeCommandList;
+  uint64_t Ordinal;
+};
+
+template <typename HandleType>
+struct ur_queue_group_generic {
+  ur_queue_group_generic(std::vector<HandleType> &&ComputeLists,
+                           std::vector<HandleType> &&MainCopyList,
+                           std::vector<HandleType> &&LinkCopyLists)
+      : ComputeLists(std::move(ComputeLists)),
+        MainCopyList(std::move(MainCopyList)),
+        LinkCopyLists(std::move(LinkCopyLists)) {}
+  std::vector<HandleType> ComputeLists;
+  std::optional<HandleType> MainCopyList;
+  std::vector<HandleType> LinkCopyLists;
+};
+
+template <typename HandleType>
+struct ur_queue_handle_pool_generic {
+  ur_command_list_pool_t(ur_queue_group_generic<HandleType>&& QueueGroup): QueueGroup(std::move(QueueGroup)) {}
+
+  class enum type {
+    Compute, Copy
+  };
+
+  HandleType getHandle(type Type) {
+    if (Type == type::Compute || (QueueGroup.MainCopyList.empty() && QueueGroup.LinkCopyLists.empty())) {
+      if (QueueGroup.ComputeLists.size() == 1) // fast path for single element
+        return QueueGroup.ComputeLists.front();
+    
+      return QueueGroup.ComputeLists[ComputeSlot.fetch_add(1, std::memory_order_acq_rel)];
+    }
+
+    auto CopyIndex = CopySlot.fetch_add(1, std::memory_order_acq_rel);
+    auto NumCopyLists = QueueGroup.MainCopyList.has_value() + QueueGroup.LinkCopyLists.size();
+
+    if (QueueGroup.MainCopyList.has_value() && CopyIndex == 0) {
+      return QueueGroup.MainCopyList.value();
+    }
+
+    return QueueGroup.LinkCopyLists[(CopyIndex - QueueGroup.MainCopyList.has_value()) % NumCopyLists];
+  }
+private:
+  ur_queue_group_generic<HandleType> QueueGroup;
+  std::atomic<uint64_t> ComputeSlot{0};
+  std::atomic<uint64_t> CopySlot{0};
+};
+
+using ur_queue_handle_pool_t = std::variant<ur_queue_handle_pool_generic<ur_immediate_command_list_t>, ur_queue_handle_pool_generic<ze_command_queue_handle_t>>;
+
 struct ur_queue_handle_t_ : _ur_object {
-  ur_queue_handle_t_(std::vector<ze_command_queue_handle_t> &ComputeQueues,
-                     std::vector<ze_command_queue_handle_t> &CopyQueues,
-                     ur_context_handle_t Context, ur_device_handle_t Device,
-                     bool OwnZeCommandQueue, ur_queue_flags_t Properties = 0,
-                     int ForceComputeIndex = -1);
+  // TODO: templatized queue_handle_t_ instead?
+  template <typename QueueGroupType>
+  ur_queue_handle_t_(ur_context_handle_t Context, ur_device_handle_t Device,
+                     bool OwnZeCommandQueue,
+                     QueueGroupType&& QueueGroup, ur_queue_flags_t Properties = 0) : Context{Context}, Device{Device}, OwnZeCommandQueue{OwnZeCommandQueue}, UsingImmCmdLists(isImmediateSubmission()), QueueHandlePool{std::move(QueueGroup)},
+      Properties(Properties), {
 
-  using queue_type = ur_device_handle_t_::queue_group_info_t::type;
-  // PI queue is in general a one to many mapping to L0 native queues.
-  struct ur_queue_group_t {
-    ur_queue_handle_t Queue;
-    ur_queue_group_t() = delete;
+  // Set events scope for this queue. Non-immediate can be controlled by env
+  // var. Immediate always uses AllHostVisible.
+  if (!UsingImmCmdLists) {
+    ZeEventsScope = DeviceEventsSetting;
+  }
 
-    // The Queue argument captures the enclosing PI queue.
-    // The Type argument specifies the type of this queue group.
-    // The actual ZeQueues are populated at PI queue construction.
-    ur_queue_group_t(ur_queue_handle_t Queue, queue_type Type)
-        : Queue(Queue), Type(Type) {}
+  // Initialize compute/copy command batches.
+  ComputeCommandBatch.OpenCommandList = CommandListMap.end();
+  CopyCommandBatch.OpenCommandList = CommandListMap.end();
+  ComputeCommandBatch.QueueBatchSize =
+      ZeCommandListBatchComputeConfig.startSize();
+  CopyCommandBatch.QueueBatchSize = ZeCommandListBatchCopyConfig.startSize();
 
-    // The type of the queue group.
-    queue_type Type;
-    bool isCopy() const { return Type != queue_type::Compute; }
-
-    // Level Zero command queue handles.
-    std::vector<ze_command_queue_handle_t> ZeQueues;
-
-    // Immediate commandlist handles, one per Level Zero command queue handle.
-    // These are created only once, along with the L0 queues (see above)
-    // and reused thereafter.
-    std::vector<ur_command_list_ptr_t> ImmCmdLists;
-
-    // Return the index of the next queue to use based on a
-    // round robin strategy and the queue group ordinal.
-    // If QueryOnly is true then return index values but don't update internal
-    // index data members of the queue.
-    uint32_t getQueueIndex(uint32_t *QueueGroupOrdinal, uint32_t *QueueIndex,
-                           bool QueryOnly = false);
-
-    // Get the ordinal for a command queue handle.
-    int32_t getCmdQueueOrdinal(ze_command_queue_handle_t CmdQueue);
-
-    // This function will return one of possibly multiple available native
-    // queues and the value of the queue group ordinal.
-    ze_command_queue_handle_t &getZeQueue(uint32_t *QueueGroupOrdinal);
-
-    // This function sets an immediate commandlist from the interop interface.
-    void setImmCmdList(ur_queue_handle_t queue, ze_command_list_handle_t);
-
-    // This function returns the next immediate commandlist to use.
-    ur_command_list_ptr_t &getImmCmdList();
-
-    // These indices are to filter specific range of the queues to use,
-    // and to organize round-robin across them.
-    uint32_t UpperIndex{0};
-    uint32_t LowerIndex{0};
-    uint32_t NextIndex{0};
-  };
-
-  // Helper class to facilitate per-thread queue groups
-  // We maintain a hashtable of queue groups if requested to do them per-thread.
-  // Otherwise it is just single entry used for all threads.
-  struct pi_queue_group_by_tid_t
-      : public std::unordered_map<std::thread::id, ur_queue_group_t> {
-    bool PerThread = false;
-
-    // Returns thread id if doing per-thread, or a generic id that represents
-    // all the threads.
-    std::thread::id tid() const {
-      return PerThread ? std::this_thread::get_id() : std::thread::id();
+  static const bool useDriverCounterBasedEvents = [Device] {
+    const char *UrRet = std::getenv("UR_L0_USE_DRIVER_COUNTER_BASED_EVENTS");
+    if (!UrRet) {
+      if (Device->isPVC())
+        return true;
+      return false;
     }
+    return std::atoi(UrRet) != 0;
+  }();
+  this->CounterBasedEventsEnabled =
+      UsingImmCmdLists && isInOrderQueue() && Device->useDriverInOrderLists() &&
+      useDriverCounterBasedEvents &&
+      Device->Platform->ZeDriverEventPoolCountingEventsExtensionFound;
+}
 
-    // Make the specified queue group be the master
-    void set(const ur_queue_group_t &QueueGroup) {
-      const auto &Device = QueueGroup.Queue->Device;
-      PerThread =
-          Device->ImmCommandListUsed == ur_device_handle_t_::PerThreadPerQueue;
-      assert(empty());
-      insert({tid(), QueueGroup});
-    }
-
-    // Get a queue group to use for this thread
-    ur_queue_group_t &get() {
-      assert(!empty());
-      auto It = find(tid());
-      if (It != end()) {
-        return It->second;
-      }
-      // Add new queue group for this thread initialized from a master entry.
-      auto QueueGroup = begin()->second;
-      // Create space for queues and immediate commandlists, which are created
-      // on demand.
-      QueueGroup.ZeQueues = std::vector<ze_command_queue_handle_t>(
-          QueueGroup.ZeQueues.size(), nullptr);
-      QueueGroup.ImmCmdLists = std::vector<ur_command_list_ptr_t>(
-          QueueGroup.ZeQueues.size(), QueueGroup.Queue->CommandListMap.end());
-
-      std::tie(It, std::ignore) = insert({tid(), QueueGroup});
-      return It->second;
-    }
-  };
-
-  // A map of compute groups containing compute queue handles, one per thread.
-  // When a queue is accessed from multiple host threads, a separate queue group
-  // is created for each thread. The key used for mapping is the thread ID.
-  pi_queue_group_by_tid_t ComputeQueueGroupsByTID;
-
-  // A group containing copy queue handles. The main copy engine, if available,
-  // comes first followed by link copy engines, if available.
-  // When a queue is accessed from multiple host threads, a separate queue group
-  // is created for each thread. The key used for mapping is the thread ID.
-  pi_queue_group_by_tid_t CopyQueueGroupsByTID;
+  // Pool of handles for command lists or (L0) command queues.
+  ur_queue_handle_pool_t QueueHandlePool;
 
   // Keeps the PI context to which this queue belongs.
   // This field is only set at ur_queue_handle_t creation time, and cannot
@@ -629,10 +612,6 @@ struct ur_queue_handle_t_ : _ur_object {
 
   // Gets the open command containing the event, or CommandListMap.end()
   ur_command_list_ptr_t eventOpenCommandList(ur_event_handle_t Event);
-
-  // Return the queue group to use based on standard/immediate commandlist mode,
-  // and if immediate mode, the thread-specific group.
-  ur_queue_group_t &getQueueGroup(bool UseCopyEngine);
 
   // Helper function to create a new command-list to this queue and associated
   // fence tracking its completion. This command list & fence are added to the
