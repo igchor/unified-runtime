@@ -650,15 +650,6 @@ ur_result_t ur_context_handle_t_::getAvailableCommandList(
   // Immediate commandlists have been pre-allocated and are always available.
   if (Queue->UsingImmCmdLists) {
     CommandList = Queue->getQueueGroup(UseCopyEngine).getImmCmdList();
-    if (CommandList->second.EventList.size() >=
-        Queue->getImmdCmmdListsEventCleanupThreshold()) {
-      std::vector<ur_event_handle_t> EventListToCleanup;
-      Queue->resetCommandList(CommandList, false, EventListToCleanup);
-      CleanupEventListFromResetCmdList(EventListToCleanup, true);
-    }
-    UR_CALL(Queue->insertStartBarrierIfDiscardEventsMode(CommandList));
-    if (auto Res = Queue->insertActiveBarriers(CommandList, UseCopyEngine))
-      return Res;
     return UR_RESULT_SUCCESS;
   } else {
     // Cleanup regular command-lists if there are too many.

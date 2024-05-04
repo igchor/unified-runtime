@@ -471,40 +471,81 @@ static bool doEagerInit = [] {
   return EagerInit ? std::atoi(EagerInit) != 0 : false;
 }();
 
-// TODO: figure out when to clal thiss
-static ur_immediate_command_list_t createImmediateCommandList(ur_device_handle_t  Queue, uint32_t Ordinal, uint32_t Index, ze_command_queue_priority_t Priority) {
-  ur_immediate_command_list_t ImmCmdList;
-  ImmCmdList.ZeQueueDesc.ordinal = Ordinal;
-  ImmCmdList.ZeQueueDesc.index = Index;
-  ImmCmdList.ZeQueueDesc.mode = ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS;
-  ImmCmdList.ZeQueueDesc.priority = Priority;
+template <typename Handle, typename F>
+static Handle createHandle(ur_context_handle_t Context, ur_device_handle_t Device, ur_queue_properties_internal_t Properties, uint32_t Ordinal, uint32_t Index, F&& MakeZeHandle) {
+  ZeStruct<ze_command_queue_desc_t> ZeQueueDesc;
+  ZeQueueDesc.ordinal = Ordinal;
+  ZeQueueDesc.index = Index;
+  ZeQueueDesc.mode = ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS;
+  ZeQueueDesc.priority = Properties.getPriority();
 
   // Evaluate performance of explicit usage for "0" index.
   if (Index != 0) {
-    ImmCmdList.ZeQueueDesc.flags |= ZE_COMMAND_QUEUE_FLAG_EXPLICIT_ONLY;
+    ZeQueueDesc.flags |= ZE_COMMAND_QUEUE_FLAG_EXPLICIT_ONLY;
   }
 
-  if (Queue->Device->useDriverInOrderLists() && Queue->isInOrderQueue()) {
-    ImmCmdList.ZeQueueDesc.flags |= ZE_COMMAND_QUEUE_FLAG_IN_ORDER;
+  if (Device->useDriverInOrderLists() && Properties.isInOrderQueue()) {
+    ZeQueueDesc.flags |= ZE_COMMAND_QUEUE_FLAG_IN_ORDER;
   }
 
   // TODO: why no check
-  ZE_CALL_NOCHECK(zeCommandListCreateImmediate,
-                    (Queue->Context->ZeContext, Queue->Device->ZeDevice,
-                     &ImmCmdList.ZeQueueDesc, &ImmCmdList.ZeCommandList));
+  Handle UrHandle;
+  ZE_CALL_NOCHECK(MakeHandle,
+                    (Context->ZeContext, Device->ZeDevice,
+                     &ZeQueueDesc, &UrHandle.ZeHandle));
 
-  return ImmCmdList;
+  return UrHandle;
 }
 
-static ur_queue_group_generic<ur_immediate_command_list_t> createImmediateCommandLists(ur_queue_handle_t Queue) {
-  ur_queue_group_generic<ur_immediate_command_list_t> immCmdListGroup;
-  for (int I = Queue->Device->QueueGroup[queue_type::Compute].LowerIndex;
-       I <= Queue->Device->QueueGroup[queue_type::Compute].UpperIndex; ++I) {
+template <typename Handle, typename F>
+static std::vector<Handle> createSingleGroupList(ur_context_handle_t Context, ur_device_handle_t Device, ur_queue_properties_internal_t Properties, queue_group_info_t& Info, F&& MakeZeHandle) {
+  std::vector<Handle> immCmdListGroup;
+  auto Ordinal = Info.ZeOrdinal;
+  for (int I = Info.LowerIndex;
+       I <= Info.UpperIndex; ++I) {
+    immCmdListGroup.emplace_back(createHandle(Context, Device, Properties, Ordinal, I, MakeZeHandle));
   }
+  return immCmdListGroup;
 }
 
-static ur_queue_group_generic<ze_command_queue_handle_t> createZeCommandQueueHandles() {
+template <typename Handle, typename F>
+static ur_queue_group_generic<Handle> createQueueGroupLists(ur_context_handle_t Context, ur_device_handle_t Device, ur_queue_properties_internal_t &Properties, F&& MakeZeHandle) {
+  ur_queue_group_generic<Handle> immCmdListGroup;
+  immCmdListGroup.ComputeLists = createSingleGroupList<Handle>(Context, Device, Properties, Properties.QueueGroupInfo[queue_group_info_t::Compute], MakeZeHandle);
+  immCmdListGroup.MainCopyList = createSingleGroupList<Handle>(Context, Device, Properties, Properties.QueueGroupInfo[queue_group_info_t::MainCopy], MakeZeHandle);
+  immCmdListGroup.LinkCopyLists = createSingleGroupList<Handle>(Context, Device, Properties, Properties.QueueGroupInfo[queue_group_info_t::LinkCopy], MakeZeHandle);
+  return immCmdListGroup;
+}
 
+template <typename... Args>
+auto createImmediateCommandListsGroup(Args&&... args) {
+  return createQueueGroupLists<ur_immediate_command_list_t>(std::forward<Args>(args)..., zeCommandListCreateImmediate);
+} 
+
+template <typename... Args>
+auto createZeQueueGroup(Args&&... args) {
+  return createQueueGroupLists<ur_command_queue_t>(std::forward<Args>(args)..., zeCommandQueueCreate);
+} 
+
+static auto makeQueueProperties(ur_device_handle_t Device, bool OwnZeCommandQueue, ur_queue_flags_t Flags, all_queue_groups_t&& QueueGroup) {
+  // Set the type of commandlists the queue will use when user-selected
+  // submission mode. Otherwise use env var setting and if unset, use default.
+  bool useBatchedSubmission = Flags & UR_QUEUE_FLAG_SUBMISSION_BATCHED;
+  if (!useBatchedSubmission && Device->useImmediateCommandLists())
+    Flags |= UR_QUEUE_FLAG_SUBMISSION_IMMEDIATE;
+
+  auto UsingImmCmdLists = Flags & UR_QUEUE_FLAG_SUBMISSION_IMMEDIATE;
+  auto IsInOrderQueue = !(Flags & UR_QUEUE_FLAG_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+
+  // Set events scope for this queue. Non-immediate can be controlled by env
+  // var. Immediate always uses AllHostVisible.
+  auto ZeEventScope = !UsingImmCmdLists ? DeviceEventsSetting : AllHostVisible;
+
+  auto CounterBasedEventsEnabled = UsingImmCmdLists && IsInOrderQueue && Device->useDriverInOrderLists() &&
+       useDriverCounterBasedEvents &&
+       Device->Platform->ZeDriverEventPoolCountingEventsExtensionFound;
+
+  return ur_queue_properties_internal_t(Flags, OwnZeCommandQueue, ZeEventScope, CounterBasedEventsEnabled, std::move(QueueGroup));
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
@@ -539,31 +580,15 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
 
   UR_ASSERT(Context->isValidDevice(Device), UR_RESULT_ERROR_INVALID_DEVICE);
 
-  // Set the type of commandlists the queue will use when user-selected
-  // submission mode. Otherwise use env var setting and if unset, use default.
-  bool useBatchedSubmission = Flags & UR_QUEUE_FLAG_SUBMISSION_BATCHED;
-  if (!useBatchedSubmission && Device->useImmediateCommandLists())
-    Flags |= UR_QUEUE_FLAG_SUBMISSION_IMMEDIATE;
-
-  if (Flags & UR_QUEUE_FLAG_SUBMISSION_IMMEDIATE) {
-    ur_queue_group_generic<ur_immediate_command_list_t> immCmdListGroup;
-    for (int I = Device->QueueGroup[queue_type::Compute].LowerIndex;
-         I <= Device->QueueGroup[queue_type::Compute].UpperIndex; ++I) {
-      // TODO: create ze immediate command list
-
-      immCmdListGroup.ComputeLists.push_back();
-    }
-
-    // TODO: do the same for copy engines
-
-    ur_queue_group_generic<ur_immediate_command_list_t> immCmdListGroup(
-
-    )
+  all_queue_groups_t QueueGroup{Device->QueueGroup};
+  if (ForceComputeIndex >= 0) {
+    QueueGroup[queue_group_info_t::Compute].UpperIndex = QueueGroup[queue_group_info_t::Compute].LowerIndex = ForceComputeIndex;
   }
 
+  auto Properties = makeQueueProperties(Device, true, Flags, QueueGroup);
+
   try {
-    *Queue =
-        new ur_queue_handle_t_(Context, Device, true, Flags, ForceComputeIndex);
+    *Queue = new ur_queue_handle_t_(Context, Device, Properties);
   } catch (const std::bad_alloc &) {
     return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
   } catch (...) {
@@ -1403,12 +1428,14 @@ bool ur_queue_handle_t_::isDiscardEvents() const {
   return ((this->Properties & UR_QUEUE_FLAG_DISCARD_EVENTS) != 0);
 }
 
-bool ur_queue_handle_t_::isPriorityLow() const {
-  return ((this->Properties & UR_QUEUE_FLAG_PRIORITY_LOW) != 0);
-}
-
-bool ur_queue_handle_t_::isPriorityHigh() const {
-  return ((this->Properties & UR_QUEUE_FLAG_PRIORITY_HIGH) != 0);
+ur_queue_priority_t ur_queue_handle_t::getPriority() const {
+  if (this->Properties & UR_QUEUE_FLAG_PRIORITY_LOW) {
+    return ur_queue_priority_t::LOW;
+  } else if (this->Properties & UR_QUEUE_FLAG_PRIORITY_HIGH) {
+    return ur_queue_priority_t::HIGH;
+  } else {
+    return ur_queue_priority_t::NORMAL;
+  }
 }
 
 bool ur_queue_handle_t_::isBatchedSubmission() const {
@@ -1866,6 +1893,8 @@ ur_result_t ur_queue_handle_t_::createCommandList(
   ze_fence_handle_t ZeFence;
   ZeStruct<ze_fence_desc_t> ZeFenceDesc;
   ze_command_list_handle_t ZeCommandList;
+
+  std::get<>(QueueHandlePool)
 
   uint32_t QueueGroupOrdinal;
   auto &QGroup = getQueueGroup(UseCopyEngine);

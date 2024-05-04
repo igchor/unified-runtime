@@ -44,15 +44,6 @@ struct ze_global_memsize {
   uint64_t value;
 };
 
-struct ur_device_handle_t_ : _ur_object {
-  ur_device_handle_t_(ze_device_handle_t Device, ur_platform_handle_t Plt,
-                      ur_device_handle_t ParentDevice = nullptr)
-      : ZeDevice{Device}, Platform{Plt}, RootDevice{ParentDevice},
-        ZeDeviceProperties{}, ZeDeviceComputeProperties{} {
-    // NOTE: one must additionally call initialize() to complete
-    // UR device creation.
-  }
-
   // The helper structure that keeps info about a command queue groups of the
   // device. It is not changed after it is initialized.
   struct queue_group_info_t {
@@ -81,7 +72,17 @@ struct ur_device_handle_t_ : _ur_object {
     ZeStruct<ze_command_queue_group_properties_t> ZeProperties;
   };
 
-  using all_queue_groups_t = std::vector<queue_group_info_t>;
+   using all_queue_groups_t = std::vector<queue_group_info_t>;
+
+struct ur_device_handle_t_ : _ur_object {
+  ur_device_handle_t_(ze_device_handle_t Device, ur_platform_handle_t Plt,
+                      ur_device_handle_t ParentDevice = nullptr)
+      : ZeDevice{Device}, Platform{Plt}, RootDevice{ParentDevice},
+        ZeDeviceProperties{}, ZeDeviceComputeProperties{} {
+    // NOTE: one must additionally call initialize() to complete
+    // UR device creation.
+  }
+
   all_queue_groups_t QueueGroup = all_queue_groups_t(queue_group_info_t::Size);
 
   // This returns "true" if a main copy engine is available for use.

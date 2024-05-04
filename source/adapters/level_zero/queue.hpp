@@ -149,6 +149,15 @@ private:
   ur_completion_batch_it active;
 };
 
+static const std::optional<bool> useDriverCounterBasedEvents = [] {
+  const char *UrRet = std::getenv("UR_L0_USE_DRIVER_COUNTER_BASED_EVENTS");
+  if (!UrRet) {
+    return std::nullopt;
+  }
+
+  return std::make_optional(std::atoi(UrRet) != 0);
+}();
+
 ur_result_t resetCommandLists(ur_queue_handle_t Queue);
 ur_result_t
 CleanupEventsInImmCmdLists(ur_queue_handle_t UrQueue, bool QueueLocked = false,
@@ -224,38 +233,37 @@ using ur_command_list_map_t =
 using ur_command_list_ptr_t = ur_command_list_map_t::iterator;
 
 struct ur_immediate_command_list_t {
-  ze_command_list_handle_t ZeCommandList;
+  ze_command_list_handle_t ZeHandle;
+  ZeStruct<ze_command_queue_desc_t> ZeQueueDesc;
+};
+
+struct ur_command_queue_t {
+  ze_command_queue_handle_t ZeHandle;
   ZeStruct<ze_command_queue_desc_t> ZeQueueDesc;
 };
 
 struct ur_batched_command_list_t {
-  ze_command_list_handle_t ZeCommandList;
-  uint64_t Ordinal;
+  ze_command_list_handle_t ZeHandle;
+  uint32_t ZeOrdinal;
 };
 
 template <typename HandleType>
 struct ur_queue_group_generic {
-  ur_queue_group_generic(std::vector<HandleType> &&ComputeLists,
-                           std::vector<HandleType> &&MainCopyList,
-                           std::vector<HandleType> &&LinkCopyLists)
-      : ComputeLists(std::move(ComputeLists)),
-        MainCopyList(std::move(MainCopyList)),
-        LinkCopyLists(std::move(LinkCopyLists)) {}
   std::vector<HandleType> ComputeLists;
-  std::optional<HandleType> MainCopyList;
+  std::vector<HandleType> MainCopyList;
   std::vector<HandleType> LinkCopyLists;
+};
+
+enum class CommandListType {
+    Compute, Copy
 };
 
 template <typename HandleType>
 struct ur_queue_handle_pool_generic {
   ur_command_list_pool_t(ur_queue_group_generic<HandleType>&& QueueGroup): QueueGroup(std::move(QueueGroup)) {}
 
-  class enum type {
-    Compute, Copy
-  };
-
-  HandleType getHandle(type Type) {
-    if (Type == type::Compute || (QueueGroup.MainCopyList.empty() && QueueGroup.LinkCopyLists.empty())) {
+  HandleType getHandle(CommandListType Type) {
+    if (Type == CommandListType::Compute || (QueueGroup.MainCopyList.empty() && QueueGroup.LinkCopyLists.empty())) {
       if (QueueGroup.ComputeLists.size() == 1) // fast path for single element
         return QueueGroup.ComputeLists.front();
     
@@ -263,13 +271,13 @@ struct ur_queue_handle_pool_generic {
     }
 
     auto CopyIndex = CopySlot.fetch_add(1, std::memory_order_acq_rel);
-    auto NumCopyLists = QueueGroup.MainCopyList.has_value() + QueueGroup.LinkCopyLists.size();
+    auto NumCopyLists = QueueGroup.MainCopyList.size() + QueueGroup.LinkCopyLists.size();
 
-    if (QueueGroup.MainCopyList.has_value() && CopyIndex == 0) {
-      return QueueGroup.MainCopyList.value();
+    if (QueueGroup.MainCopyList.size() && CopyIndex == 0) {
+      return QueueGroup.MainCopyList.front();
     }
 
-    return QueueGroup.LinkCopyLists[(CopyIndex - QueueGroup.MainCopyList.has_value()) % NumCopyLists];
+    return QueueGroup.LinkCopyLists[(CopyIndex - QueueGroup.MainCopyList.size()) % NumCopyLists];
   }
 private:
   ur_queue_group_generic<HandleType> QueueGroup;
@@ -277,46 +285,110 @@ private:
   std::atomic<uint64_t> CopySlot{0};
 };
 
-using ur_queue_handle_pool_t = std::variant<ur_queue_handle_pool_generic<ur_immediate_command_list_t>, ur_queue_handle_pool_generic<ze_command_queue_handle_t>>;
+using ur_immediate_cmdlist_pool_t = ur_queue_handle_pool_generic<ur_immediate_command_list_t>;
+using ur_command_queue_pool_t = ur_queue_handle_pool_generic<ur_command_queue_t>;
 
-struct ur_queue_handle_t_ : _ur_object {
-  // TODO: templatized queue_handle_t_ instead?
-  template <typename QueueGroupType>
-  ur_queue_handle_t_(ur_context_handle_t Context, ur_device_handle_t Device,
-                     bool OwnZeCommandQueue,
-                     QueueGroupType&& QueueGroup, ur_queue_flags_t Properties = 0) : Context{Context}, Device{Device}, OwnZeCommandQueue{OwnZeCommandQueue}, UsingImmCmdLists(isImmediateSubmission()), QueueHandlePool{std::move(QueueGroup)},
-      Properties(Properties), {
+// Priority of the UR queue - 1:1 mapping with L0 command queue
+enum class ur_queue_priority_t {
+  NORMAL = ZE_COMMAND_QUEUE_PRIORITY_NORMAL,
+  LOW = ZE_COMMAND_QUEUE_PRIORITY_PRIORITY_LOW,
+  HIGH = ZE_COMMAND_QUEUE_PRIORITY_PRIORITY_HIGH
+};
 
-  // Set events scope for this queue. Non-immediate can be controlled by env
-  // var. Immediate always uses AllHostVisible.
-  if (!UsingImmCmdLists) {
-    ZeEventsScope = DeviceEventsSetting;
+struct ur_queue_properties_internal_t {
+  ur_queue_properties_internal_t(ur_queue_flags_t Flags, bool OwnZeCommandQueue, bool UsingImmCmdLists, EventsScope ZeEventsScope, bool CounterBasedEventsEnabled, all_queue_groups_t&& QueueGroup)
+      : Flags(Flags), OwnZeCommandQueue(OwnZeCommandQueue), ZeEventsScope(ZeEventsScope), CounterBasedEventsEnabled(CounterBasedEventsEnabled), QueueGroup(std::move(QueueGroup)) { }
+
+  // Returns true if the queue is a in-order queue.
+  bool isInOrderQueue() const;
+
+  // Returns true if the queue has discard events property.
+  bool isDiscardEvents() const;
+
+  // Returns priority of the queue
+  ur_queue_priority_t getPriority() const;
+
+  // Returns true if the queue has an explicitly selected submission mode.
+  bool isBatchedSubmission() const;
+  bool isImmediateSubmission() const;
+
+// TODO
+// private:
+  // Flags passed at the queue creation time
+  ur_queue_flags_t Flags;
+
+  // Indicates if we own the ZeCommandQueue or it came from interop that
+  // asked to not transfer the ownership to SYCL RT.
+  bool OwnZeCommandQueue;
+
+  // Scope of events used for events on the queue
+  // Can be adjusted with UR_L0_DEVICE_SCOPE_EVENTS
+  // for non-immediate command lists
+  EventsScope ZeEventsScope;
+
+  // Keeps track of whether we are using Counter-based Events
+  bool CounterBasedEventsEnabled;
+
+  // Queue Group information
+  all_queue_groups_t QueueGroupInfo;
+};
+
+struct ur_immediate_queue_t {
+    ur_immediate_command_list_t getCommandList(
+    CommandListType Type, bool AllowBatching,
+    ze_command_queue_handle_t *ForcedCmdQueue) {
+      return CmdListPool.getHandle(Type);
+    }
+
+private:
+  ur_queue_handle_pool_generic<ur_immediate_command_list_t> CmdListPool;
+};
+
+struct ur_batched_queue_t {
+  ur_batched_command_list_t getCommandList(
+    CommandListType Type, bool AllowBatching,
+    ze_command_queue_handle_t *ForcedCmdQueue) {
+      auto OpenCommandList = getOpenCommandList(Type);
+      if (OpenCommandList.has_value() && AllowBatching) {
+        return OpenCommandList.value();
+      } else if (OpenCommandList.has_value()) {
+        // TODO: should we execute what's there or just select another command list?
+        // or maybe we can just use immediate command list for this case?
+        if (auto Res = Queue->executeOpenCommandList(UseCopyEngine))
+          return Res;
+      }
+
+      // TODO: look through the list of command lists and find one that has been signaled
+
+      // If there are no available command lists nor signalled command lists,
+  // then we must create another command list.
+  ur_result = Queue->createCommandList(UseCopyEngine, CommandList);
+  CommandList->second.ZeFenceInUse = true;
+  return ur_result;
+
+
   }
 
-  // Initialize compute/copy command batches.
-  ComputeCommandBatch.OpenCommandList = CommandListMap.end();
-  CopyCommandBatch.OpenCommandList = CommandListMap.end();
-  ComputeCommandBatch.QueueBatchSize =
-      ZeCommandListBatchComputeConfig.startSize();
-  CopyCommandBatch.QueueBatchSize = ZeCommandListBatchCopyConfig.startSize();
+private:
+  ur_command_queue_pool_t QueuePool;
+};
 
-  static const bool useDriverCounterBasedEvents = [Device] {
-    const char *UrRet = std::getenv("UR_L0_USE_DRIVER_COUNTER_BASED_EVENTS");
-    if (!UrRet) {
-      if (Device->isPVC())
-        return true;
-      return false;
+struct ur_queue_handle_t_ : _ur_object {
+  ur_queue_handle_t_(ur_context_handle_t Context, ur_device_handle_t Device, ur_queue_properties_internal_t Properties
+                     ) : Context{Context}, Device{Device},
+      Properties(Properties) {
+
+    if (Properties.isImmediateSubmission()) {
+      QueueHandlePool = std::make_unique<ur_queue_handle_pool_generic<ur_immediate_command_list_t>>(createImmediateCommandListsGroup(Context, Device, Properties));
+    } else {
+      QueueHandlePool = std::make_unique<ur_queue_handle_pool_generic<ur_command_queue_t>>(createZeQueueGroup(Context, Device, Properties));
     }
-    return std::atoi(UrRet) != 0;
-  }();
-  this->CounterBasedEventsEnabled =
-      UsingImmCmdLists && isInOrderQueue() && Device->useDriverInOrderLists() &&
-      useDriverCounterBasedEvents &&
-      Device->Platform->ZeDriverEventPoolCountingEventsExtensionFound;
 }
+  // Queue properties
+  ur_queue_properties_internal_t Properties;
 
   // Pool of handles for command lists or (L0) command queues.
-  ur_queue_handle_pool_t QueueHandlePool;
+  std::unique_ptr<ur_queue_handle_pool_t> QueueHandlePool;
 
   // Keeps the PI context to which this queue belongs.
   // This field is only set at ur_queue_handle_t creation time, and cannot
@@ -330,35 +402,11 @@ struct ur_queue_handle_t_ : _ur_object {
   // ur_queue_handle_t.
   const ur_device_handle_t Device;
 
-  // A queue may use either standard or immediate commandlists. At queue
-  // construction time this is set based on the device and any env var settings
-  // that change the default for the device type. When an interop queue is
-  // constructed, the caller chooses the type of commandlists to use.
-  bool UsingImmCmdLists = false;
-
-  // Scope of events used for events on the queue
-  // Can be adjusted with UR_L0_DEVICE_SCOPE_EVENTS
-  // for non-immediate command lists
-  EventsScope ZeEventsScope = AllHostVisible;
-
   // Keeps track of the event associated with the last enqueued command into
   // this queue. this is used to add dependency with the last command to add
   // in-order semantics and updated with the latest event each time a new
   // command is enqueued.
   ur_event_handle_t LastCommandEvent = nullptr;
-
-  // Indicates if we own the ZeCommandQueue or it came from interop that
-  // asked to not transfer the ownership to SYCL RT.
-  bool OwnZeCommandQueue;
-
-  // Keeps the properties of this queue.
-  ur_queue_flags_t Properties;
-
-  // Keeps track of whether we are using Counter-based Events
-  bool CounterBasedEventsEnabled = false;
-
-  // Map of all command lists used in this queue.
-  ur_command_list_map_t CommandListMap;
 
   // Helper data structure to hold all variables related to batching
   struct command_batch {
@@ -517,20 +565,6 @@ struct ur_queue_handle_t_ : _ur_object {
   // For copy commands, IsCopy is set to 'true'.
   // For non-copy commands, IsCopy is set to 'false'.
   bool isBatchingAllowed(bool IsCopy) const;
-
-  // Returns true if the queue is a in-order queue.
-  bool isInOrderQueue() const;
-
-  // Returns true if the queue has discard events property.
-  bool isDiscardEvents() const;
-
-  // Returns true if the queue has explicit priority set by user.
-  bool isPriorityLow() const;
-  bool isPriorityHigh() const;
-
-  // Returns true if the queue has an explicitly selected submission mode.
-  bool isBatchedSubmission() const;
-  bool isImmediateSubmission() const;
 
   // Wait for all commandlists associated with this Queue to finish operations.
   [[nodiscard]] ur_result_t synchronize();
