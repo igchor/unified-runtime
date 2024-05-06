@@ -423,12 +423,14 @@ static ur_result_t enqueueCommandBufferFillHelper(
             UR_RESULT_ERROR_INVALID_VALUE);
 
   // Pattern size must fit the compute queue capabilities.
-  UR_ASSERT(
-      PatternSize <=
-          CommandBuffer->Device
-              ->QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute]
-              .ZeProperties.maxMemoryFillPatternSize,
-      UR_RESULT_ERROR_INVALID_VALUE);
+  auto PatternSizeMax =
+      and_then(CommandBuffer->Device->getQueueGroupProperties(
+                   ur_device_handle_t_::queue_group_info_t::Compute),
+               [](auto &props) {
+                 return std::make_optional(props.maxMemoryFillPatternSize);
+               })
+          .value_or(0);
+  UR_ASSERT(PatternSize <= PatternSizeMax, UR_RESULT_ERROR_INVALID_VALUE);
 
   if (CommandBuffer->IsInOrderCmdList) {
     ZE2UR_CALL(zeCommandListAppendMemoryFill,
@@ -477,8 +479,7 @@ urCommandBufferCreateExp(ur_context_handle_t Context, ur_device_handle_t Device,
   // Force compute queue type for now. Copy engine types may be better suited
   // for host to device copies.
   uint32_t QueueGroupOrdinal =
-      Device->QueueGroup[ur_device_handle_t_::queue_group_info_t::type::Compute]
-          .ZeOrdinal;
+      Device->getQueueOrdinal(ur_device_handle_t_::queue_group_info_t::Compute);
 
   ZeStruct<ze_command_list_desc_t> ZeCommandListDesc;
   ZeCommandListDesc.commandQueueGroupOrdinal = QueueGroupOrdinal;
