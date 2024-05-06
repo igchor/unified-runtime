@@ -319,17 +319,13 @@ ur_result_t ur_context_handle_t_::initialize() {
   // Prefer to use copy engine for initialization copies,
   // if available and allowed (main copy engine with index 0).
   ZeStruct<ze_command_queue_desc_t> ZeCommandQueueDesc;
-  const auto &Range = getRangeOfAllowedCopyEngines((ur_device_handle_t)Device);
-  ZeCommandQueueDesc.ordinal =
-      Device->QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute]
-          .ZeOrdinal;
-  if (Range.first >= 0 &&
-      Device->QueueGroup[ur_device_handle_t_::queue_group_info_t::MainCopy]
-              .ZeOrdinal != -1)
-    ZeCommandQueueDesc.ordinal =
-        Device->QueueGroup[ur_device_handle_t_::queue_group_info_t::MainCopy]
-            .ZeOrdinal;
-
+  if (Device->hasMainCopyEngine()) {
+    ZeCommandQueueDesc.ordinal = Device->getQueueOrdinal(
+        ur_device_handle_t_::queue_group_info_t::Compute);
+  } else {
+    ZeCommandQueueDesc.ordinal = Device->getQueueOrdinal(
+        ur_device_handle_t_::queue_group_info_t::Compute);
+  }
   ZeCommandQueueDesc.index = 0;
   ZeCommandQueueDesc.mode = ZE_COMMAND_QUEUE_MODE_SYNCHRONOUS;
   ZE2UR_CALL(

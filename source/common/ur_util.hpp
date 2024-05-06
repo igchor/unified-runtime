@@ -264,6 +264,15 @@ inline std::size_t combine_hashes(std::size_t seed, const T &v, Args... args) {
     return combine_hashes(seed ^ std::hash<T>{}(v), args...);
 }
 
+// Pre-C++23 implementation of std::optional::and_then
+template <typename T, typename F>
+auto and_then(const std::optional<T> &opt, F &&f) -> decltype(f(opt.value())) {
+    if (opt) {
+        return f(opt.value());
+    }
+    return std::nullopt;
+}
+
 inline ur_result_t exceptionToResult(std::exception_ptr eptr) {
     try {
         if (eptr) {

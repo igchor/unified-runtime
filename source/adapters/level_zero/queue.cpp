@@ -503,34 +503,9 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
 
   UR_ASSERT(Context->isValidDevice(Device), UR_RESULT_ERROR_INVALID_DEVICE);
 
-  // Create placeholder queues in the compute queue group.
-  // Actual L0 queues will be created at first use.
-  std::vector<ze_command_queue_handle_t> ZeComputeCommandQueues(
-      Device->QueueGroup[ur_queue_handle_t_::queue_type::Compute]
-          .ZeProperties.numQueues,
-      nullptr);
-
-  // Create placeholder queues in the copy queue group (main and link
-  // native groups are combined into one group).
-  // Actual L0 queues will be created at first use.
-  size_t NumCopyGroups = 0;
-  if (Device->hasMainCopyEngine()) {
-    NumCopyGroups +=
-        Device->QueueGroup[ur_queue_handle_t_::queue_type::MainCopy]
-            .ZeProperties.numQueues;
-  }
-  if (Device->hasLinkCopyEngine()) {
-    NumCopyGroups +=
-        Device->QueueGroup[ur_queue_handle_t_::queue_type::LinkCopy]
-            .ZeProperties.numQueues;
-  }
-  std::vector<ze_command_queue_handle_t> ZeCopyCommandQueues(NumCopyGroups,
-                                                             nullptr);
-
   try {
     *Queue =
-        new ur_queue_handle_t_(ZeComputeCommandQueues, ZeCopyCommandQueues,
-                               Context, Device, true, Flags, ForceComputeIndex);
+        new ur_queue_handle_t_(Context, Device, true, Flags, ForceComputeIndex);
   } catch (const std::bad_alloc &) {
     return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
   } catch (...) {
@@ -784,34 +759,29 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreateWithNativeHandle(
   // The NativeHandleDesc has value if if the native handle is an immediate
   // command list.
   if (NativeHandleDesc == 1) {
-    std::vector<ze_command_queue_handle_t> ComputeQueues{nullptr};
-    std::vector<ze_command_queue_handle_t> CopyQueues;
-
     try {
-      ur_queue_handle_t_ *Queue = new ur_queue_handle_t_(
-          ComputeQueues, CopyQueues, Context, UrDevice, OwnNativeHandle, Flags);
+      ur_queue_handle_t_ *Queue =
+          new ur_queue_handle_t_(Context, UrDevice, OwnNativeHandle, Flags);
       *RetQueue = reinterpret_cast<ur_queue_handle_t>(Queue);
     } catch (const std::bad_alloc &) {
       return UR_RESULT_ERROR_OUT_OF_RESOURCES;
     } catch (...) {
       return UR_RESULT_ERROR_UNKNOWN;
     }
+    // TODO: pass NativeQueue in ctor
     auto &InitialGroup = (*RetQueue)->ComputeQueueGroupsByTID.begin()->second;
     InitialGroup.setImmCmdList(*RetQueue,
                                ur_cast<ze_command_list_handle_t>(NativeQueue));
   } else {
     auto ZeQueue = ur_cast<ze_command_queue_handle_t>(NativeQueue);
-    // Assume this is the "0" index queue in the compute command-group.
-    std::vector<ze_command_queue_handle_t> ZeQueues{ZeQueue};
+    // TODO: pass NativeQueue in ctor
 
     // TODO: see what we can do to correctly initialize PI queue for
     // compute vs. copy Level-Zero queue. Currently we will send
     // all commands to the "ZeQueue".
-    std::vector<ze_command_queue_handle_t> ZeroCopyQueues;
-
     try {
-      ur_queue_handle_t_ *Queue = new ur_queue_handle_t_(
-          ZeQueues, ZeroCopyQueues, Context, UrDevice, OwnNativeHandle, Flags);
+      ur_queue_handle_t_ *Queue =
+          new ur_queue_handle_t_(Context, UrDevice, OwnNativeHandle, Flags);
       *RetQueue = reinterpret_cast<ur_queue_handle_t>(Queue);
     } catch (const std::bad_alloc &) {
       return UR_RESULT_ERROR_OUT_OF_RESOURCES;
@@ -1054,11 +1024,11 @@ static const zeCommandListBatchConfig ZeCommandListBatchCopyConfig = [] {
   return ZeCommandListBatchConfig(IsCopy{true});
 }();
 
-ur_queue_handle_t_::ur_queue_handle_t_(
-    std::vector<ze_command_queue_handle_t> &ComputeQueues,
-    std::vector<ze_command_queue_handle_t> &CopyQueues,
-    ur_context_handle_t Context, ur_device_handle_t Device,
-    bool OwnZeCommandQueue, ur_queue_flags_t Properties, int ForceComputeIndex)
+ur_queue_handle_t_::ur_queue_handle_t_(ur_context_handle_t Context,
+                                       ur_device_handle_t Device,
+                                       bool OwnZeCommandQueue,
+                                       ur_queue_flags_t Properties,
+                                       int ForceComputeIndex)
     : Context{Context}, Device{Device}, OwnZeCommandQueue{OwnZeCommandQueue},
       Properties(Properties) {
   // Set the type of commandlists the queue will use when user-selected
@@ -1076,26 +1046,20 @@ ur_queue_handle_t_::ur_queue_handle_t_(
     ZeEventsScope = DeviceEventsSetting;
   }
 
-  // Compute group initialization.
-  // First, see if the queue's device allows for round-robin or it is
-  // fixed to one particular compute CCS (it is so for sub-sub-devices).
-  auto &ComputeQueueGroupInfo = Device->QueueGroup[queue_type::Compute];
   ur_queue_group_t ComputeQueueGroup{reinterpret_cast<ur_queue_handle_t>(this),
                                      queue_type::Compute};
-  ComputeQueueGroup.ZeQueues = ComputeQueues;
-  // Create space to hold immediate commandlists corresponding to the
-  // ZeQueues
-  if (UsingImmCmdLists) {
-    ComputeQueueGroup.ImmCmdLists = std::vector<ur_command_list_ptr_t>(
-        ComputeQueueGroup.ZeQueues.size(), CommandListMap.end());
-  }
-  if (ComputeQueueGroupInfo.ZeIndex >= 0) {
-    // Sub-sub-device
 
+  // Compute group initialization.
+  if (Device->isCCS()) {
+    // Sub-sub-device
     // sycl::ext::intel::property::queue::compute_index works with any
     // backend/device by allowing single zero index if multiple compute CCSes
     // are not supported. Sub-sub-device falls into the same bucket.
     assert(ForceComputeIndex <= 0);
+    auto ComputeQueueGroupInfo =
+        std::get<ur_device_handle_t_::sub_sub_device_info_t>(
+            Device->DeviceInfo);
+
     ComputeQueueGroup.LowerIndex = ComputeQueueGroupInfo.ZeIndex;
     ComputeQueueGroup.UpperIndex = ComputeQueueGroupInfo.ZeIndex;
     ComputeQueueGroup.NextIndex = ComputeQueueGroupInfo.ZeIndex;
@@ -1104,22 +1068,21 @@ ur_queue_handle_t_::ur_queue_handle_t_(
     ComputeQueueGroup.UpperIndex = ForceComputeIndex;
     ComputeQueueGroup.NextIndex = ForceComputeIndex;
   } else {
-    // Set-up to round-robin across allowed range of engines.
-    uint32_t FilterLowerIndex = getRangeOfAllowedComputeEngines().first;
-    uint32_t FilterUpperIndex = getRangeOfAllowedComputeEngines().second;
-    FilterUpperIndex = (std::min)((size_t)FilterUpperIndex,
-                                  FilterLowerIndex + ComputeQueues.size() - 1);
-    if (FilterLowerIndex <= FilterUpperIndex) {
-      ComputeQueueGroup.LowerIndex = FilterLowerIndex;
-      ComputeQueueGroup.UpperIndex = FilterUpperIndex;
-      ComputeQueueGroup.NextIndex = ComputeQueueGroup.LowerIndex;
-    } else {
-      die("No compute queue available/allowed.");
-    }
+    ComputeQueueGroup.LowerIndex = std::get<all_queue_group_info_t>(
+                                       Device->DeviceInfo)[queue_type::Compute]
+                                       ->LowerIndex;
+    ComputeQueueGroup.UpperIndex = std::get<all_queue_group_info_t>(
+                                       Device->DeviceInfo)[queue_type::Compute]
+                                       ->UpperIndex;
+    ComputeQueueGroup.NextIndex = ComputeQueueGroup.LowerIndex;
   }
+
+  ComputeQueueGroup.ZeQueues = std::vector<ze_command_queue_handle_t>(
+      ComputeQueueGroup.UpperIndex - ComputeQueueGroup.LowerIndex, nullptr);
+
+  // Create space to hold immediate commandlists corresponding to the
+  // ZeQueues
   if (UsingImmCmdLists) {
-    // Create space to hold immediate commandlists corresponding to the
-    // ZeQueues
     ComputeQueueGroup.ImmCmdLists = std::vector<ur_command_list_ptr_t>(
         ComputeQueueGroup.ZeQueues.size(), CommandListMap.end());
   }
@@ -1129,28 +1092,33 @@ ur_queue_handle_t_::ur_queue_handle_t_(
   // Copy group initialization.
   ur_queue_group_t CopyQueueGroup{reinterpret_cast<ur_queue_handle_t>(this),
                                   queue_type::MainCopy};
-  const auto &Range = getRangeOfAllowedCopyEngines((ur_device_handle_t)Device);
-  if (Range.first < 0 || Range.second < 0) {
-    // We are asked not to use copy engines, just do nothing.
-    // Leave CopyQueueGroup.ZeQueues empty, and it won't be used.
-  } else {
-    uint32_t FilterLowerIndex = Range.first;
-    uint32_t FilterUpperIndex = Range.second;
-    FilterUpperIndex = (std::min)((size_t)FilterUpperIndex,
-                                  FilterLowerIndex + CopyQueues.size() - 1);
-    if (FilterLowerIndex <= FilterUpperIndex) {
-      CopyQueueGroup.ZeQueues = CopyQueues;
-      CopyQueueGroup.LowerIndex = FilterLowerIndex;
-      CopyQueueGroup.UpperIndex = FilterUpperIndex;
-      CopyQueueGroup.NextIndex = CopyQueueGroup.LowerIndex;
-      // Create space to hold immediate commandlists corresponding to the
-      // ZeQueues
-      if (UsingImmCmdLists) {
-        CopyQueueGroup.ImmCmdLists = std::vector<ur_command_list_ptr_t>(
-            CopyQueueGroup.ZeQueues.size(), CommandListMap.end());
-      }
-    }
+  auto QueueGroupInfo = std::get<all_queue_groups_t>(Device->DeviceInfo);
+
+  CopyQueueGroup.LowerIndex = CopyQueueGroup.UpperIndex = UINT32_MAX;
+  if (QueueGroupInfo[queue_type::MainCopy]) {
+    CopyQueueGroup.LowerIndex = QueueGroupInfo[queue_type::MainCopy].LowerIndex;
+    CopyQueueGroup.UpperIndex = QueueGroupInfo[queue_type::MainCopy].UpperIndex;
   }
+
+  if (QueueGroupInfo[queue_type::LinkCopy]) {
+    CopyQueueGroup.LowerIndex =
+        std::min(QueueGroupInfo[queue_type::MainCopy].LowerIndex,
+                 QueueGroupInfo[queue_type::LinkCopy].LowerIndex);
+    CopyQueueGroup.UpperIndex =
+        std::max(QueueGroupInfo[queue_type::MainCopy].UpperIndex,
+                 QueueGroupInfo[queue_type::LinkCopy].UpperIndex);
+  }
+
+  CopyQueueGroup.ZeQueues = std::vector<ze_command_queue_handle_t>(
+      CopyQueueGroup.UpperIndex - CopyQueueGroup.LowerIndex, nullptr);
+
+  // Create space to hold immediate commandlists corresponding to the
+  // ZeQueues
+  if (UsingImmCmdLists) {
+    CopyQueueGroup.ImmCmdLists = std::vector<ur_command_list_ptr_t>(
+        CopyQueueGroup.ZeQueues.size(), CommandListMap.end());
+  }
+
   CopyQueueGroupsByTID.set(CopyQueueGroup);
 
   // Initialize compute/copy command batches.

@@ -224,9 +224,7 @@ using ur_command_list_map_t =
 using ur_command_list_ptr_t = ur_command_list_map_t::iterator;
 
 struct ur_queue_handle_t_ : _ur_object {
-  ur_queue_handle_t_(std::vector<ze_command_queue_handle_t> &ComputeQueues,
-                     std::vector<ze_command_queue_handle_t> &CopyQueues,
-                     ur_context_handle_t Context, ur_device_handle_t Device,
+  ur_queue_handle_t_(ur_context_handle_t Context, ur_device_handle_t Device,
                      bool OwnZeCommandQueue, ur_queue_flags_t Properties = 0,
                      int ForceComputeIndex = -1);
 

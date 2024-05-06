@@ -24,6 +24,7 @@
 #include <zes_api.h>
 
 #include "common.hpp"
+#include "ur_util.hpp"
 
 enum EventsScope {
   // All events are created host-visible.
@@ -64,31 +65,71 @@ struct ur_device_handle_t_ : _ur_object {
     };
 
     // Keep the ordinal of the commands group as returned by
-    // zeDeviceGetCommandQueueGroupProperties. A value of "-1" means that
-    // there is no such queue group available in the Level Zero runtime.
-    int32_t ZeOrdinal{-1};
+    // zeDeviceGetCommandQueueGroupProperties.
+    uint32_t ZeOrdinal;
 
-    // Keep the index of the specific queue in this queue group where
-    // all the command enqueues of the corresponding type should go to.
-    // The value of "-1" means that no hard binding is defined and
-    // implementation can choose specific queue index on its own.
-    int32_t ZeIndex{-1};
+    // Represent range of allowed queue indices for this queue group.
+    uint32_t UpperIndex{0};
+    uint32_t LowerIndex{0};
+
+    // Keeps the queue group properties.
+    ZeStruct<ze_command_queue_group_properties_t> ZeProperties;
+
+    size_t numUsableQueues() const { return UpperIndex - LowerIndex + 1; }
+  };
+
+  struct sub_sub_device_info_t {
+    // Index of command queue associated with this sub-sub-device.
+    uint32_t ZeIndex;
+
+    // Keep the ordinal of the commands group as returned by
+    // zeDeviceGetCommandQueueGroupProperties.
+    uint32_t ZeOrdinal;
 
     // Keeps the queue group properties.
     ZeStruct<ze_command_queue_group_properties_t> ZeProperties;
   };
 
-  std::vector<queue_group_info_t> QueueGroup =
-      std::vector<queue_group_info_t>(queue_group_info_t::Size);
+  using all_queue_groups_t = std::vector<std::optional<queue_group_info_t>>;
+
+  // holds information about all queue groups or a sub-sub-device
+  std::variant<all_queue_groups_t, sub_sub_device_info_t> QueueInfo;
+
+  std::optional<ze_command_queue_group_properties_t>
+  getQueueGroupProperties(queue_group_info_t::type Type) const {
+    if (auto *QueueGroup = std::get_if<all_queue_groups_t>(&QueueInfo)) {
+      return and_then((*QueueGroup)[Type], [](auto &info) {
+        return std::make_optional(info.ZeProperties);
+      });
+    } else {
+      return std::get<sub_sub_device_info_t>(QueueInfo).ZeProperties;
+    }
+  }
+
+  uint32_t getQueueOrdinal(queue_group_info_t::type Type) const {
+    if (auto *QueueGroup = std::get_if<all_queue_groups_t>(&QueueInfo)) {
+      return (*QueueGroup)[Type]->ZeOrdinal;
+    } else {
+      return std::get<sub_sub_device_info_t>(QueueInfo).ZeOrdinal;
+    }
+  }
 
   // This returns "true" if a main copy engine is available for use.
   bool hasMainCopyEngine() const {
-    return QueueGroup[queue_group_info_t::MainCopy].ZeOrdinal >= 0;
+    if (auto *QueueGroup = std::get_if<all_queue_groups_t>(&QueueInfo)) {
+      return (*QueueGroup)[queue_group_info_t::MainCopy].has_value();
+    } else {
+      return false;
+    }
   }
 
   // This returns "true" if a link copy engine is available for use.
   bool hasLinkCopyEngine() const {
-    return QueueGroup[queue_group_info_t::LinkCopy].ZeOrdinal >= 0;
+    if (auto *QueueGroup = std::get_if<all_queue_groups_t>(&QueueInfo)) {
+      return (*QueueGroup)[queue_group_info_t::LinkCopy].has_value();
+    } else {
+      return false;
+    }
   }
 
   // This returns "true" if a main or link copy engine is available for use.
@@ -182,8 +223,7 @@ struct ur_device_handle_t_ : _ur_object {
 
   // Does this device represent a single compute slice?
   bool isCCS() const {
-    return QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute]
-               .ZeIndex >= 0;
+    return std::holds_alternative<sub_sub_device_info_t>(QueueInfo);
   }
 
   // Cache of the immutable device properties.
@@ -201,4 +241,8 @@ struct ur_device_handle_t_ : _ur_object {
   ZeCache<struct ze_global_memsize> ZeGlobalMemSize;
   ZeCache<ZeStruct<ze_mutable_command_list_exp_properties_t>>
       ZeDeviceMutableCmdListsProperties;
+
+private:
+  const std::optional<std::pair<uint32_t, uint32_t>>
+  getRangeOfAllowedCopyEngines();
 };

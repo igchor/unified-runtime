@@ -195,26 +195,37 @@ static ur_result_t enqueueMemFillHelper(ur_command_t CommandType,
   // Check both main and link groups as we don't known which one will be used.
   //
   if (PreferCopyEngine && Device->hasCopyEngine()) {
-    if (Device->hasMainCopyEngine() &&
-        Device->QueueGroup[ur_device_handle_t_::queue_group_info_t::MainCopy]
-                .ZeProperties.maxMemoryFillPatternSize < PatternSize) {
-      PreferCopyEngine = false;
-    }
-    if (Device->hasLinkCopyEngine() &&
-        Device->QueueGroup[ur_device_handle_t_::queue_group_info_t::LinkCopy]
-                .ZeProperties.maxMemoryFillPatternSize < PatternSize) {
-      PreferCopyEngine = false;
-    }
+    auto MainCopyEngineMaxPatternSize =
+        and_then(Device->getQueueGroupProperties(
+                     ur_device_handle_t_::queue_group_info_t::MainCopy),
+                 [](auto &props) {
+                   return std::make_optional(props.maxMemoryFillPatternSize);
+                 })
+            .value_or(0);
+    auto LinkCopyEngineMaxPatternSize =
+        and_then(Device->getQueueGroupProperties(
+                     ur_device_handle_t_::queue_group_info_t::MainCopy),
+                 [](auto &props) {
+                   return std::make_optional(props.maxMemoryFillPatternSize);
+                 })
+            .value_or(0);
+
+    PreferCopyEngine = MainCopyEngineMaxPatternSize < PatternSize ||
+                       LinkCopyEngineMaxPatternSize < PatternSize;
   }
 
   bool UseCopyEngine = Queue->useCopyEngine(PreferCopyEngine);
+  auto ComputeEngineMaxPatternSize =
+      and_then(Device->getQueueGroupProperties(
+                   ur_device_handle_t_::queue_group_info_t::Compute),
+               [](auto &props) {
+                 return std::make_optional(props.maxMemoryFillPatternSize);
+               })
+          .value_or(0);
   if (!UseCopyEngine) {
     // Pattern size must fit the compute queue capabilities.
-    UR_ASSERT(
-        PatternSize <=
-            Device->QueueGroup[ur_device_handle_t_::queue_group_info_t::Compute]
-                .ZeProperties.maxMemoryFillPatternSize,
-        UR_RESULT_ERROR_INVALID_VALUE);
+    UR_ASSERT(PatternSize <= ComputeEngineMaxPatternSize,
+              UR_RESULT_ERROR_INVALID_VALUE);
   }
 
   _ur_ze_event_list_t TmpWaitList;
