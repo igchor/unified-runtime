@@ -27,9 +27,76 @@
 
 #include <umf_helpers.hpp>
 
-struct l0_command_list_cache_info {
-  ZeStruct<ze_command_queue_desc_t> ZeQueueDesc;
-  bool InOrderList = false;
+struct immediate_command_list_descriptor_t {
+  ze_device_handle_t Device;
+  ZeStruct<ze_command_queue_desc_t> QueueDesc;
+  bool operator==(const immediate_command_list_descriptor_t &rhs) const;
+};
+
+struct regular_command_list_descriptor_t {
+  ze_device_handle_t Device;
+  ZeStruct<ze_command_list_desc_t> ListDesc;
+  bool operator==(const regular_command_list_descriptor_t &rhs) const;
+};
+
+template <typename ListType> struct command_list_descriptor_hash_t {
+  inline size_t operator()(const command_list_descriptor_hash_t &desc) const;
+};
+
+template <>
+struct command_list_descriptor_hash_t<immediate_command_list_descriptor_t> {
+  inline size_t
+  operator()(const immediate_command_list_descriptor_t &desc) const {
+    return combine_hashes(0, desc.Device, // desc.QueueDesc.index,
+                          desc.QueueDesc.flags, desc.QueueDesc.mode,
+                          desc.QueueDesc.priority);
+  }
+};
+
+template <>
+struct command_list_descriptor_hash_t<regular_command_list_descriptor_t> {
+  inline size_t
+  operator()(const regular_command_list_descriptor_t &desc) const {
+    return combine_hashes(0, desc.Device, // desc.QueueDesc.index,
+                          desc.ListDesc.flags,
+                          desc.ListDesc.commandQueueGroupOrdinal);
+  }
+};
+
+template <typename DescriptorType> struct command_list_cache {
+  ~command_list_cache() {
+    for (auto &Item : ZeCommandListCache) {
+      ze_command_list_handle_t ZeCommandList = Item.second;
+      if (ZeCommandList) {
+        ZE_CALL_NOCHECK(zeCommandListDestroy, (ZeCommandList));
+      }
+    }
+  }
+
+  std::optional<ze_command_list_handle_t>
+  getCommandList(const DescriptorType &desc) {
+    std::scoped_lock<ur_mutex> Lock(ZeCommandListCacheMutex);
+    auto it = ZeCommandListCache.find(desc);
+    if (it == ZeCommandListCache.end())
+      return std::nullopt;
+    auto CommandListHandle = it->second;
+    ZeCommandListCache.erase(it);
+    return std::make_optional(CommandListHandle);
+  }
+
+  void addCommandList(const DescriptorType &desc,
+                      ze_command_list_handle_t cmdList) {
+    // TODO: add limit?
+    std::scoped_lock<ur_mutex> Lock(ZeCommandListCacheMutex);
+    ZeCommandListCache.emplace(desc, cmdList);
+  }
+
+private:
+  // todo: use unique_ptrs?
+  std::unordered_map<DescriptorType, ze_command_list_handle_t,
+                     command_list_descriptor_hash_t<DescriptorType>>
+      ZeCommandListCache;
+  ur_mutex ZeCommandListCacheMutex;
 };
 
 struct ur_context_handle_t_ : _ur_object {
@@ -71,10 +138,6 @@ struct ur_context_handle_t_ : _ur_object {
   // called from simultaneous threads.
   ur_mutex ImmediateCommandListMutex;
 
-  // Mutex Lock for the Command List Cache. This lock is used to control both
-  // compute and copy command list caches.
-  ur_mutex ZeCommandListCacheMutex;
-
   // If context contains one device or sub-devices of the same device, we want
   // to save this device.
   // This field is only set at ur_context_handle_t creation time, and cannot
@@ -82,22 +145,16 @@ struct ur_context_handle_t_ : _ur_object {
   // ur_context_handle_t.
   ur_device_handle_t SingleRootDevice = nullptr;
 
-  // Cache of all currently available/completed command/copy lists.
-  // Note that command-list can only be re-used on the same device.
-  //
-  // TODO: explore if we should use root-device for creating command-lists
-  // as spec says that in that case any sub-device can re-use it: "The
-  // application must only use the command list for the device, or its
-  // sub-devices, which was provided during creation."
-  //
-  std::unordered_map<ze_device_handle_t,
-                     std::list<std::pair<ze_command_list_handle_t,
-                                         l0_command_list_cache_info>>>
-      ZeComputeCommandListCache;
-  std::unordered_map<ze_device_handle_t,
-                     std::list<std::pair<ze_command_list_handle_t,
-                                         l0_command_list_cache_info>>>
-      ZeCopyCommandListCache;
+  // Get reference to the command list cache for a given list type
+  template <typename ListDescriptorType>
+  auto &getCommandListCache(bool UseCopyEngine) {
+    if constexpr (std::is_same_v<ListDescriptorType,
+                                 immediate_command_list_descriptor_t>) {
+      return UseCopyEngine ? ImmCopyListCache : ImmComputeListCache;
+    } else {
+      return UseCopyEngine ? ComputeListCache : CopyListCache;
+    }
+  }
 
   // Store USM pool for USM shared and device allocations. There is 1 memory
   // pool per each pair of (context, device) per each memory type.
@@ -303,6 +360,19 @@ struct ur_context_handle_t_ : _ur_object {
   bool isValidDevice(ur_device_handle_t Device) const;
 
 private:
+  // Cache of all currently available/completed command/copy lists.
+  // Note that command-list can only be re-used on the same device.
+  //
+  // TODO: explore if we should use root-device for creating command-lists
+  // as spec says that in that case any sub-device can re-use it: "The
+  // application must only use the command list for the device, or its
+  // sub-devices, which was provided during creation."
+  //
+  command_list_cache<immediate_command_list_descriptor_t> ImmComputeListCache;
+  command_list_cache<immediate_command_list_descriptor_t> ImmCopyListCache;
+  command_list_cache<regular_command_list_descriptor_t> ComputeListCache;
+  command_list_cache<regular_command_list_descriptor_t> CopyListCache;
+
   // Get the cache of events for a provided scope and profiling mode.
   auto getEventCache(bool HostVisible, bool WithProfiling,
                      ur_device_handle_t Device) {

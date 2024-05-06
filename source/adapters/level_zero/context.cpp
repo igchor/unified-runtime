@@ -18,6 +18,25 @@
 #include "queue.hpp"
 #include "ur_level_zero.hpp"
 
+bool immediate_command_list_descriptor_t::operator==(
+    const immediate_command_list_descriptor_t &rhs) const {
+  // TODO: should we look at all flags?
+  return Device == rhs.Device &&
+         // QueueDesc.index == rhs.QueueDesc.index &&
+         QueueDesc.flags == rhs.QueueDesc.flags &&
+         QueueDesc.mode == rhs.QueueDesc.mode &&
+         QueueDesc.priority == rhs.QueueDesc.priority;
+}
+
+bool regular_command_list_descriptor_t::operator==(
+    const regular_command_list_descriptor_t &rhs) const {
+  // TODO: should we look at all flags?
+  return Device == rhs.Device &&
+         ListDesc.commandQueueGroupOrdinal ==
+             rhs.ListDesc.commandQueueGroupOrdinal &&
+         ListDesc.flags == rhs.ListDesc.flags;
+}
+
 UR_APIEXPORT ur_result_t UR_APICALL urContextCreate(
     uint32_t DeviceCount, ///< [in] the number of devices given in phDevices
     const ur_device_handle_t
@@ -428,29 +447,6 @@ ur_result_t ur_context_handle_t_::finalize() {
   if (ZeResult && ZeResult != ZE_RESULT_ERROR_UNINITIALIZED)
     return ze2urResult(ZeResult);
 
-  std::scoped_lock<ur_mutex> Lock(ZeCommandListCacheMutex);
-  for (auto &List : ZeComputeCommandListCache) {
-    for (auto &Item : List.second) {
-      ze_command_list_handle_t ZeCommandList = Item.first;
-      if (ZeCommandList) {
-        auto ZeResult = ZE_CALL_NOCHECK(zeCommandListDestroy, (ZeCommandList));
-        // Gracefully handle the case that L0 was already unloaded.
-        if (ZeResult && ZeResult != ZE_RESULT_ERROR_UNINITIALIZED)
-          return ze2urResult(ZeResult);
-      }
-    }
-  }
-  for (auto &List : ZeCopyCommandListCache) {
-    for (auto &Item : List.second) {
-      ze_command_list_handle_t ZeCommandList = Item.first;
-      if (ZeCommandList) {
-        auto ZeResult = ZE_CALL_NOCHECK(zeCommandListDestroy, (ZeCommandList));
-        // Gracefully handle the case that L0 was already unloaded.
-        if (ZeResult && ZeResult != ZE_RESULT_ERROR_UNINITIALIZED)
-          return ze2urResult(ZeResult);
-      }
-    }
-  }
   return UR_RESULT_SUCCESS;
 }
 
@@ -643,6 +639,8 @@ static const size_t CmdListsCleanupThreshold = [] {
 }();
 
 // Retrieve an available command list to be used in a PI call.
+// TODO: remove ForcedCmdQueue, this is only used for
+// enqueing a barrier into each queue associated with UR queue.
 ur_result_t ur_context_handle_t_::getAvailableCommandList(
     ur_queue_handle_t Queue, ur_command_list_ptr_t &CommandList,
     bool UseCopyEngine, uint32_t NumEventsInWaitList,
@@ -709,67 +707,55 @@ ur_result_t ur_context_handle_t_::getAvailableCommandList(
   // Initally, we need to check if a command list has already been created
   // on this device that is available for use. If so, then reuse that
   // Level-Zero Command List and Fence for this PI call.
-  {
-    // Make sure to acquire the lock before checking the size, or there
-    // will be a race condition.
-    std::scoped_lock<ur_mutex> Lock(Queue->Context->ZeCommandListCacheMutex);
-    // Under mutex since operator[] does insertion on the first usage for
-    // every unique ZeDevice.
-    auto &ZeCommandListCache =
-        UseCopyEngine
-            ? Queue->Context->ZeCopyCommandListCache[Queue->Device->ZeDevice]
-            : Queue->Context
-                  ->ZeComputeCommandListCache[Queue->Device->ZeDevice];
+  ZeStruct<ze_command_list_desc_t> CmdListDesc;
+  if (Queue->Device->useDriverInOrderLists() && Queue->isInOrderQueue())
+    CmdListDesc.flags |= ZE_COMMAND_LIST_FLAG_IN_ORDER;
+  // TODO: make Oridnal/Index optional params to the getter + add support for
+  // forced CmdQueue
+  regular_command_list_descriptor_t Desc{Queue->Device->ZeDevice, CmdListDesc};
+  auto ZeCommandList =
+      Queue->Context
+          ->getCommandListCache<regular_command_list_descriptor_t>(
+              UseCopyEngine)
+          .getCommandList(Desc);
+  if (ZeCommandList) {
+    auto it = Queue->CommandListMap.find(ZeCommandList.value());
+    if (it != Queue->CommandListMap.end()) {
+      CommandList = it;
+      if (CommandList->second.ZeFence != nullptr)
+        CommandList->second.ZeFenceInUse = true;
+    } else {
+      // If there is a command list available on this context, but it
+      // wasn't yet used in this queue then create a new entry in this
+      // queue's map to hold the fence and other associated command
+      // list information.
+      auto &QGroup = Queue->getQueueGroup(UseCopyEngine);
+      uint32_t QueueGroupOrdinal;
+      auto &ZeCommandQueue = ForcedCmdQueue
+                                 ? *ForcedCmdQueue
+                                 : QGroup.getZeQueue(&QueueGroupOrdinal);
+      if (ForcedCmdQueue)
+        QueueGroupOrdinal = QGroup.getCmdQueueOrdinal(ZeCommandQueue);
 
-    for (auto ZeCommandListIt = ZeCommandListCache.begin();
-         ZeCommandListIt != ZeCommandListCache.end(); ++ZeCommandListIt) {
-      // If this is an InOrder Queue, then only allow lists which are in order.
-      if (Queue->Device->useDriverInOrderLists() && Queue->isInOrderQueue() &&
-          !(ZeCommandListIt->second.InOrderList)) {
-        continue;
-      }
-      auto &ZeCommandList = ZeCommandListIt->first;
-      auto it = Queue->CommandListMap.find(ZeCommandList);
-      if (it != Queue->CommandListMap.end()) {
-        if (ForcedCmdQueue && *ForcedCmdQueue != it->second.ZeQueue)
-          continue;
-        CommandList = it;
-        if (CommandList->second.ZeFence != nullptr)
-          CommandList->second.ZeFenceInUse = true;
-      } else {
-        // If there is a command list available on this context, but it
-        // wasn't yet used in this queue then create a new entry in this
-        // queue's map to hold the fence and other associated command
-        // list information.
-        auto &QGroup = Queue->getQueueGroup(UseCopyEngine);
-        uint32_t QueueGroupOrdinal;
-        auto &ZeCommandQueue = ForcedCmdQueue
-                                   ? *ForcedCmdQueue
-                                   : QGroup.getZeQueue(&QueueGroupOrdinal);
-        if (ForcedCmdQueue)
-          QueueGroupOrdinal = QGroup.getCmdQueueOrdinal(ZeCommandQueue);
+      ze_fence_handle_t ZeFence;
+      ZeStruct<ze_fence_desc_t> ZeFenceDesc;
+      ZE2UR_CALL(zeFenceCreate, (ZeCommandQueue, &ZeFenceDesc, &ZeFence));
+      ZeStruct<ze_command_queue_desc_t> ZeQueueDesc;
+      ZeQueueDesc.ordinal = QueueGroupOrdinal;
 
-        ze_fence_handle_t ZeFence;
-        ZeStruct<ze_fence_desc_t> ZeFenceDesc;
-        ZE2UR_CALL(zeFenceCreate, (ZeCommandQueue, &ZeFenceDesc, &ZeFence));
-        ZeStruct<ze_command_queue_desc_t> ZeQueueDesc;
-        ZeQueueDesc.ordinal = QueueGroupOrdinal;
-
-        CommandList =
-            Queue->CommandListMap
-                .emplace(ZeCommandList,
-                         ur_command_list_info_t(ZeFence, true, false,
-                                                ZeCommandQueue, ZeQueueDesc,
-                                                Queue->useCompletionBatching()))
-                .first;
-      }
-      ZeCommandListCache.erase(ZeCommandListIt);
-      if (auto Res = Queue->insertStartBarrierIfDiscardEventsMode(CommandList))
-        return Res;
-      if (auto Res = Queue->insertActiveBarriers(CommandList, UseCopyEngine))
-        return Res;
-      return UR_RESULT_SUCCESS;
+      CommandList =
+          Queue->CommandListMap
+              .emplace(ZeCommandList.value(),
+                       ur_command_list_info_t(ZeFence, true, false,
+                                              ZeCommandQueue, ZeQueueDesc,
+                                              Queue->useCompletionBatching()))
+              .first;
     }
+    if (auto Res = Queue->insertStartBarrierIfDiscardEventsMode(CommandList))
+      return Res;
+    if (auto Res = Queue->insertActiveBarriers(CommandList, UseCopyEngine))
+      return Res;
+    return UR_RESULT_SUCCESS;
   }
 
   // If there are no available command lists in the cache, then we check for

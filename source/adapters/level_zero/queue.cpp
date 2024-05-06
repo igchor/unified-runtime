@@ -643,22 +643,14 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueRelease(
           return ze2urResult(ZeResult);
       }
       if (Queue->UsingImmCmdLists && Queue->OwnZeCommandQueue) {
-        std::scoped_lock<ur_mutex> Lock(
-            Queue->Context->ZeCommandListCacheMutex);
         const ur_command_list_info_t &MapEntry = it->second;
         if (MapEntry.CanReuse) {
-          // Add commandlist to the cache for future use.
-          // It will be deleted when the context is destroyed.
-          auto &ZeCommandListCache =
-              MapEntry.isCopy(Queue)
-                  ? Queue->Context
-                        ->ZeCopyCommandListCache[Queue->Device->ZeDevice]
-                  : Queue->Context
-                        ->ZeComputeCommandListCache[Queue->Device->ZeDevice];
-          struct l0_command_list_cache_info ListInfo;
-          ListInfo.ZeQueueDesc = it->second.ZeQueueDesc;
-          ListInfo.InOrderList = it->second.IsInOrderList;
-          ZeCommandListCache.push_back({it->first, ListInfo});
+          immediate_command_list_descriptor_t Desc{Queue->Device->ZeDevice,
+                                                   it->second.ZeQueueDesc};
+          Queue->Context
+              ->getCommandListCache<immediate_command_list_descriptor_t>(
+                  MapEntry.isCopy(Queue))
+              .addCommandList(Desc, it->first);
         } else {
           // A non-reusable comamnd list that came from a make_queue call is
           // destroyed since it cannot be recycled.
@@ -2033,15 +2025,12 @@ ur_result_t ur_queue_handle_t_::resetCommandList(
   // Standard commandlists move in and out of the cache as they are recycled.
   // Immediate commandlists are always available.
   if (CommandList->second.ZeFence != nullptr && MakeAvailable) {
-    std::scoped_lock<ur_mutex> Lock(this->Context->ZeCommandListCacheMutex);
-    auto &ZeCommandListCache =
-        UseCopyEngine
-            ? this->Context->ZeCopyCommandListCache[this->Device->ZeDevice]
-            : this->Context->ZeComputeCommandListCache[this->Device->ZeDevice];
-    struct l0_command_list_cache_info ListInfo;
-    ListInfo.ZeQueueDesc = CommandList->second.ZeQueueDesc;
-    ListInfo.InOrderList = CommandList->second.IsInOrderList;
-    ZeCommandListCache.push_back({CommandList->first, ListInfo});
+    ZeStruct<ze_command_list_desc_t> ListDesc;
+    ListDesc.commandQueueGroupOrdinal = CommandList->second.ZeQueueDesc.ordinal;
+    regular_command_list_descriptor_t Desc{Device->ZeDevice, ListDesc};
+    Context
+        ->getCommandListCache<regular_command_list_descriptor_t>(UseCopyEngine)
+        .addCommandList(Desc, CommandList->first);
   }
 
   return UR_RESULT_SUCCESS;
@@ -2348,47 +2337,29 @@ ur_command_list_ptr_t &ur_queue_handle_t_::ur_queue_group_t::getImmCmdList() {
 
   // Check if context's command list cache has an immediate command list with
   // matching index.
-  ze_command_list_handle_t ZeCommandList = nullptr;
-  {
-    // Acquire lock to avoid race conditions.
-    std::scoped_lock<ur_mutex> Lock(Queue->Context->ZeCommandListCacheMutex);
-    // Under mutex since operator[] does insertion on the first usage for every
-    // unique ZeDevice.
-    auto &ZeCommandListCache =
-        isCopy()
-            ? Queue->Context->ZeCopyCommandListCache[Queue->Device->ZeDevice]
-            : Queue->Context
-                  ->ZeComputeCommandListCache[Queue->Device->ZeDevice];
-    for (auto ZeCommandListIt = ZeCommandListCache.begin();
-         ZeCommandListIt != ZeCommandListCache.end(); ++ZeCommandListIt) {
-      const auto &Desc = (*ZeCommandListIt).second.ZeQueueDesc;
-      if (Desc.index == ZeCommandQueueDesc.index &&
-          Desc.flags == ZeCommandQueueDesc.flags &&
-          Desc.mode == ZeCommandQueueDesc.mode &&
-          Desc.priority == ZeCommandQueueDesc.priority) {
-        ZeCommandList = (*ZeCommandListIt).first;
-        ZeCommandListCache.erase(ZeCommandListIt);
-        break;
-      }
-    }
-  }
+  auto ZeCommandListOpt =
+      Queue->Context
+          ->getCommandListCache<immediate_command_list_descriptor_t>(isCopy())
+          .getCommandList({Queue->Device->ZeDevice, ZeCommandQueueDesc});
 
   // If cache didn't contain a command list, create one.
-  if (!ZeCommandList) {
+  if (!ZeCommandListOpt) {
     logger::debug("[getZeQueue]: create queue ordinal = {}, index = {} "
                   "(round robin in [{}, {}]) priority = {}",
                   ZeCommandQueueDesc.ordinal, ZeCommandQueueDesc.index,
                   LowerIndex, UpperIndex, Priority);
 
+    ze_command_list_handle_t ZeCommandList;
     ZE_CALL_NOCHECK(zeCommandListCreateImmediate,
                     (Queue->Context->ZeContext, Queue->Device->ZeDevice,
                      &ZeCommandQueueDesc, &ZeCommandList));
+    ZeCommandListOpt = ZeCommandList;
   }
 
   ImmCmdLists[Index] =
       Queue->CommandListMap
           .insert(std::pair<ze_command_list_handle_t, ur_command_list_info_t>{
-              ZeCommandList,
+              ZeCommandListOpt.value(),
               ur_command_list_info_t(nullptr, true, false, nullptr,
                                      ZeCommandQueueDesc,
                                      Queue->useCompletionBatching())})
