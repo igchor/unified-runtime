@@ -460,17 +460,6 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueGetInfo(
   return UR_RESULT_SUCCESS;
 }
 
-// Controls if we should choose doing eager initialization
-// to make it happen on warmup paths and have the reportable
-// paths be less likely affected.
-//
-static bool doEagerInit = [] {
-  const char *UrRet = std::getenv("UR_L0_EAGER_INIT");
-  const char *PiRet = std::getenv("SYCL_EAGER_INIT");
-  const char *EagerInit = UrRet ? UrRet : (PiRet ? PiRet : nullptr);
-  return EagerInit ? std::atoi(EagerInit) != 0 : false;
-}();
-
 UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
     ur_context_handle_t Context, ///< [in] handle of the context object
     ur_device_handle_t Device,   ///< [in] handle of the device object
@@ -510,46 +499,6 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
     return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
   } catch (...) {
     return UR_RESULT_ERROR_UNKNOWN;
-  }
-
-  // Do eager initialization of Level Zero handles on request.
-  if (doEagerInit) {
-    ur_queue_handle_t Q = *Queue;
-    // Creates said number of command-lists.
-    auto warmupQueueGroup = [Q](bool UseCopyEngine,
-                                uint32_t RepeatCount) -> ur_result_t {
-      ur_command_list_ptr_t CommandList;
-      while (RepeatCount--) {
-        if (Q->UsingImmCmdLists) {
-          CommandList = Q->getQueueGroup(UseCopyEngine).getImmCmdList();
-        } else {
-          // Heuristically create some number of regular command-list to reuse.
-          for (int I = 0; I < 10; ++I) {
-            UR_CALL(Q->createCommandList(UseCopyEngine, CommandList));
-            // Immediately return them to the cache of available command-lists.
-            std::vector<ur_event_handle_t> EventsUnused;
-            UR_CALL(Q->resetCommandList(CommandList, true /* MakeAvailable */,
-                                        EventsUnused));
-          }
-        }
-      }
-      return UR_RESULT_SUCCESS;
-    };
-    // Create as many command-lists as there are queues in the group.
-    // With this the underlying round-robin logic would initialize all
-    // native queues, and create command-lists and their fences.
-    // At this point only the thread creating the queue will have associated
-    // command-lists. Other threads have not accessed the queue yet. So we can
-    // only warmup the initial thread's command-lists.
-    const auto &QueueGroup = Q->ComputeQueueGroupsByTID.get();
-    UR_CALL(warmupQueueGroup(false, QueueGroup.UpperIndex -
-                                        QueueGroup.LowerIndex + 1));
-    if (Q->useCopyEngine()) {
-      const auto &QueueGroup = Q->CopyQueueGroupsByTID.get();
-      UR_CALL(warmupQueueGroup(true, QueueGroup.UpperIndex -
-                                         QueueGroup.LowerIndex + 1));
-    }
-    // TODO: warmup event pools. Both host-visible and device-only.
   }
 
   return UR_RESULT_SUCCESS;
@@ -666,25 +615,21 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueGetNativeHandle(
 
   int32_t NativeHandleDesc{};
 
-  // Get handle to this thread's queue group.
-  auto &QueueGroup = Queue->getQueueGroup(false /*compute*/);
-
-  if (Queue->UsingImmCmdLists) {
+  std::visit(overloaded{[&](command_handles_t<ze_command_list_handle_t> &ImmCmdList) {
     auto ZeCmdList = ur_cast<ze_command_list_handle_t *>(NativeQueue);
-    // Extract the Level Zero command list handle from the given PI queue
-    *ZeCmdList = QueueGroup.getImmCmdList()->first;
+    // TODO: is it safe to give the underlying handle to the user?
+    // Can use enqueue concurrently?
+    *ZeCmdList = ImmCmdList.ComputeHandle;
     // TODO: How to pass this up in the urQueueGetNativeHandle interface?
     NativeHandleDesc = true;
-  } else {
-    auto ZeQueue = ur_cast<ze_command_queue_handle_t *>(NativeQueue);
-
-    // Extract a Level Zero compute queue handle from the given PI queue
-    auto &QueueGroup = Queue->getQueueGroup(false /*compute*/);
-    uint32_t QueueGroupOrdinalUnused;
-    *ZeQueue = QueueGroup.getZeQueue(&QueueGroupOrdinalUnused);
-    // TODO: How to pass this up in the urQueueGetNativeHandle interface?
+  },
+    [&](command_handles_t<ze_command_queue_handle_t> &ZeQueue) {
+auto ZeQueue = ur_cast<ze_command_queue_handle_t *>(NativeQueue);
+*ZeQueue = ZeQueue.ComputeHandle;
+// TODO: How to pass this up in the urQueueGetNativeHandle interface?
     NativeHandleDesc = false;
-  }
+    }
+  }, Queue->CommandHandles);
 
   if (Desc && Desc->pNativeData)
     *(reinterpret_cast<int32_t *>((Desc->pNativeData))) = NativeHandleDesc;
@@ -1046,8 +991,11 @@ ur_queue_handle_t_::ur_queue_handle_t_(ur_context_handle_t Context,
     ZeEventsScope = DeviceEventsSetting;
   }
 
-  ur_queue_group_t ComputeQueueGroup{reinterpret_cast<ur_queue_handle_t>(this),
-                                     queue_type::Compute};
+  if (UsingImmCmdLists) {
+    CommandHandles = command_handles_t<ze_command_list_handle_t>{};
+  } else {
+    CommandHandles = command_handles_t<ze_command_queue_handle_t>{};
+  }
 
   // Compute group initialization.
   if (Device->isCCS()) {
@@ -1060,13 +1008,12 @@ ur_queue_handle_t_::ur_queue_handle_t_(ur_context_handle_t Context,
         std::get<ur_device_handle_t_::sub_sub_device_info_t>(
             Device->DeviceInfo);
 
-    ComputeQueueGroup.LowerIndex = ComputeQueueGroupInfo.ZeIndex;
-    ComputeQueueGroup.UpperIndex = ComputeQueueGroupInfo.ZeIndex;
-    ComputeQueueGroup.NextIndex = ComputeQueueGroupInfo.ZeIndex;
+    std::get<command_handles_t<ze_command_list_handle_t>>(CommandHandles).ComputeHandle = Context->getCommandListCache<immediate_command_list_descriptor_t>(false).getCommandList(
+        Device->ZeDevice, ComputeQueueGroupInfo.ZeIndex);
+
   } else if (ForceComputeIndex >= 0) {
-    ComputeQueueGroup.LowerIndex = ForceComputeIndex;
-    ComputeQueueGroup.UpperIndex = ForceComputeIndex;
-    ComputeQueueGroup.NextIndex = ForceComputeIndex;
+    std::get<command_handles_t<ze_command_list_handle_t>>(CommandHandles).ComputeHandle = Context->getCommandListCache<immediate_command_list_descriptor_t>(false).getCommandList(
+        Device->ZeDevice, ForceComputeIndex);
   } else {
     ComputeQueueGroup.LowerIndex = std::get<all_queue_group_info_t>(
                                        Device->DeviceInfo)[queue_type::Compute]
@@ -2045,43 +1992,8 @@ ur_queue_handle_t_::eventOpenCommandList(ur_event_handle_t Event) {
   return CommandListMap.end();
 }
 
-ur_queue_handle_t_::ur_queue_group_t &
-ur_queue_handle_t_::getQueueGroup(bool UseCopyEngine) {
-  auto &Map = (UseCopyEngine ? CopyQueueGroupsByTID : ComputeQueueGroupsByTID);
-  return Map.get();
-}
+ze_command_queue_handle_t createZeQueue() {
 
-// Return the index of the next queue to use based on a
-// round robin strategy and the queue group ordinal.
-uint32_t ur_queue_handle_t_::ur_queue_group_t::getQueueIndex(
-    uint32_t *QueueGroupOrdinal, uint32_t *QueueIndex, bool QueryOnly) {
-  auto CurrentIndex = NextIndex;
-
-  if (!QueryOnly) {
-    ++NextIndex;
-    if (NextIndex > UpperIndex)
-      NextIndex = LowerIndex;
-  }
-
-  // Find out the right queue group ordinal (first queue might be "main" or
-  // "link")
-  auto QueueType = Type;
-  if (QueueType != queue_type::Compute)
-    QueueType = (CurrentIndex == 0 && Queue->Device->hasMainCopyEngine())
-                    ? queue_type::MainCopy
-                    : queue_type::LinkCopy;
-
-  *QueueGroupOrdinal = Queue->Device->QueueGroup[QueueType].ZeOrdinal;
-  // Adjust the index to the L0 queue group since we represent "main" and
-  // "link"
-  // L0 groups with a single copy group ("main" would take "0" index).
-  auto ZeCommandQueueIndex = CurrentIndex;
-  if (QueueType == queue_type::LinkCopy && Queue->Device->hasMainCopyEngine()) {
-    ZeCommandQueueIndex -= 1;
-  }
-  *QueueIndex = ZeCommandQueueIndex;
-
-  return CurrentIndex;
 }
 
 // This function will return one of possibly multiple available native

@@ -1184,17 +1184,13 @@ ur_result_t _ur_ze_event_list_t::createAndRetainUrZeEventList(
         // new command list is different from the last used command list then
         // signal new event from the last immediate command list. We are going
         // to insert a barrier in the new command list waiting for that event.
-        auto QueueGroup = CurQueue->getQueueGroup(UseCopyEngine);
-        uint32_t QueueGroupOrdinal, QueueIndex;
-        auto NextIndex =
-            QueueGroup.getQueueIndex(&QueueGroupOrdinal, &QueueIndex,
-                                     /*QueryOnly */ true);
-        auto NextImmCmdList = QueueGroup.ImmCmdLists[NextIndex];
+        // TODO: does it make sense to select a different command list if need
+        // to add a barrier? Wouldn't it be better to just keep appending to the
+        // same one?
         if (CurQueue->LastUsedCommandList != CurQueue->CommandListMap.end() &&
-            CurQueue->LastUsedCommandList != NextImmCmdList) {
+            UseCopyEngine != CurQueue->LastUsedCommandList->second.isCopy())
           CurQueue->signalEventFromCmdListIfLastEventDiscarded(
               CurQueue->LastUsedCommandList);
-        }
       }
     } else {
       // Ensure LastCommandEvent's batch is submitted if it is differrent
@@ -1233,14 +1229,9 @@ ur_result_t _ur_ze_event_list_t::createAndRetainUrZeEventList(
   // the same UR Queue.
   if (CurQueue->Device->useDriverInOrderLists() && CurQueue->isInOrderQueue() &&
       CurQueue->UsingImmCmdLists) {
-    auto QueueGroup = CurQueue->getQueueGroup(UseCopyEngine);
-    uint32_t QueueGroupOrdinal, QueueIndex;
-    auto NextIndex = QueueGroup.getQueueIndex(&QueueGroupOrdinal, &QueueIndex,
-                                              /*QueryOnly */ true);
-    auto NextImmCmdList = QueueGroup.ImmCmdLists[NextIndex];
     IncludeLastCommandEvent &=
         CurQueue->LastUsedCommandList != CurQueue->CommandListMap.end() &&
-        NextImmCmdList != CurQueue->LastUsedCommandList;
+        UseCopyEngine != CurQueue->LastUsedCommandList->second.isCopy();
   }
 
   try {

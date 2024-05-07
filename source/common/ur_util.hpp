@@ -273,6 +273,12 @@ auto and_then(const std::optional<T> &opt, F &&f) -> decltype(f(opt.value())) {
     return std::nullopt;
 }
 
+template <class... Ts> struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+// explicit deduction guide (not needed as of C++20)
+template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
 inline ur_result_t exceptionToResult(std::exception_ptr eptr) {
     try {
         if (eptr) {
