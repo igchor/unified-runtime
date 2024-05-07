@@ -757,7 +757,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGetInfo(
     return std::visit(
         [](auto &&Info) {
           if constexpr (std::is_same_v<std::decay_t<decltype(Info)>,
-                                       sub_sub_device_info_t>) {
+                                       ur_device_handle_t_::sub_sub_device_info_t>) {
             // Sub-sub-device represents a particular compute index already.
             return ReturnValue(int32_t{1});
           } else {
@@ -1268,7 +1268,7 @@ ur_result_t ur_device_handle_t_::initialize(int SubSubDeviceOrdinal,
                                  QueueGroupProperties[i]};
         } else if (LowerCopyQueueIndex > MainCopyEngineIndex &&
                    UpperCopyQueueIndex >= LowerCopyQueueIndex) {
-          QueueGroup[queue_group_info_t::MainCopy] =
+          QueueGroup[queue_group_info_t::LinkCopy] =
               queue_group_info_t{i, LowerCopyQueueIndex, UpperCopyQueueIndex,
                                  QueueGroupProperties[i]};
           break;
