@@ -645,6 +645,8 @@ ur_result_t ur_context_handle_t_::getAvailableCommandList(
     ur_queue_handle_t Queue, ur_command_list_ptr_t &CommandList,
     bool UseCopyEngine, bool AllowBatching,
     ze_command_queue_handle_t *ForcedCmdQueue) {
+  util::LatencyTracker tracker(getCmdListLatency);
+
   // Immediate commandlists have been pre-allocated and are always available.
   if (Queue->UsingImmCmdLists) {
     CommandList = Queue->getQueueGroup(UseCopyEngine).getImmCmdList();

@@ -11,6 +11,12 @@
 #include "common.hpp"
 #include "usm.hpp"
 
+util::PercentileStats KernelEnqueueLatency;
+util::PercentileStats getCmdListLatency;
+util::PercentileStats createEventLatency;
+util::PercentileStats createAndRetainUrZeEventListLatency;
+util::PercentileStats createEventAndAssociateQueueLatency;
+
 ur_result_t ze2urResult(ze_result_t ZeResult) {
   if (ZeResult == ZE_RESULT_SUCCESS)
     return UR_RESULT_SUCCESS;

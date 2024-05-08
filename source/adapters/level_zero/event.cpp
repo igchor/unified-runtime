@@ -1140,6 +1140,7 @@ ur_result_t ur_event_handle_t_::reset() {
 ur_result_t _ur_ze_event_list_t::createAndRetainUrZeEventList(
     uint32_t EventListLength, const ur_event_handle_t *EventList,
     ur_queue_handle_t CurQueue, bool UseCopyEngine) {
+  util::LatencyTracker tracker(createAndRetainUrZeEventListLatency);
   this->Length = 0;
   this->ZeEventList = nullptr;
   this->UrEventList = nullptr;
