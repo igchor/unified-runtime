@@ -3,12 +3,17 @@
 # See LICENSE.TXT
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+if (UR_ENABLE_LATENCY_TRACKER)
+    set (EXTRA_COMMON_SOURCES latency_tracker.cpp)
+endif()
+
 add_ur_library(ur_common STATIC
     umf_helpers.hpp
     umf_pools/disjoint_pool_config_parser.cpp
     ur_pool_manager.hpp
     ur_util.cpp
     ur_util.hpp
+    ${EXTRA_COMMON_SOURCES}
     $<$<PLATFORM_ID:Windows>:windows/ur_lib_loader.cpp>
     $<$<PLATFORM_ID:Linux,Darwin>:linux/ur_lib_loader.cpp>
 )
@@ -55,6 +60,12 @@ target_link_libraries(ur_common PUBLIC
     ${CMAKE_DL_LIBS}
     ${PROJECT_NAME}::headers
 )
+
+if (UR_ENABLE_LATENCY_TRACKER)
+    find_package(Folly REQUIRED)
+    find_package(gflags CONFIG REQUIRED)
+    target_link_libraries(ur_common PUBLIC Folly::folly)
+endif()
 
 if (UNIX)
     set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
