@@ -1862,7 +1862,7 @@ ur_result_t createEventAndAssociateQueue(ur_queue_handle_t Queue,
                                          ur_command_list_ptr_t CommandList,
                                          bool IsInternal, bool IsMultiDevice,
                                          std::optional<bool> HostVisible) {
-
+  util::LatencyTracker tracker(createEventAndAssociateQueueLatency);
   if (!HostVisible.has_value()) {
     // Internal/discarded events do not need host-scope visibility.
     HostVisible = IsInternal ? false : Queue->ZeEventsScope == AllHostVisible;

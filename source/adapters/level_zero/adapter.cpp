@@ -12,6 +12,8 @@
 #include "ur_level_zero.hpp"
 #include <iomanip>
 
+#include <folly/Format.h>
+
 // Due to multiple DLLMain definitions with SYCL, Global Adapter is init at
 // variable creation.
 #if defined(_WIN32)
@@ -140,7 +142,28 @@ void globalAdapterOnDemandCleanup() {
 }
 
 ur_result_t adapterStateTeardown() {
+  auto &out = std::cout;
+  auto printLatencies =
+            [&out](folly::StringPiece cat,
+                   const util::PercentileStats::Estimates& latency) {
+              auto fmtLatency = [&out, &cat](folly::StringPiece pct,
+                                             double val) {
+                out << folly::sformat("{:20} {:8} : {:>10.2f} ns\n", cat, pct,
+                                      val);
+              };
+
+              fmtLatency("p50", latency.p50);
+              fmtLatency("p90", latency.p90);
+              fmtLatency("p99", latency.p99);
+            };
+
   bool LeakFound = false;
+
+  printLatencies("KernelEnqueueLatency", KernelEnqueueLatency.estimate());
+  printLatencies("getCmdListLatency", getCmdListLatency.estimate());
+  printLatencies("createEventLatency", createEventLatency.estimate());
+  printLatencies("createAndRetainUrZeEventList", createAndRetainUrZeEventListLatency.estimate());
+  printLatencies("createEventAndAssociateQueue", createEventAndAssociateQueueLatency.estimate());
 
   // Print the balance of various create/destroy native calls.
   // The idea is to verify if the number of create(+) and destroy(-) calls are

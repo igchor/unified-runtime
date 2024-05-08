@@ -23,6 +23,8 @@
 #include <ze_api.h>
 #include <zes_api.h>
 
+#include "latency_tracker.hpp"
+
 #include <umf_pools/disjoint_pool_config_parser.hpp>
 
 struct _ur_platform_handle_t;
@@ -169,6 +171,12 @@ static auto getUrResultString = [](ur_result_t Result) {
     return "UR_RESULT_ERROR_UNKNOWN";
   }
 };
+
+extern util::PercentileStats KernelEnqueueLatency;
+extern util::PercentileStats getCmdListLatency;
+extern util::PercentileStats createEventLatency;
+extern util::PercentileStats createAndRetainUrZeEventListLatency;
+extern util::PercentileStats createEventAndAssociateQueueLatency;
 
 // Trace an internal PI call; returns in case of an error.
 #define UR_CALL(Call)                                                          \

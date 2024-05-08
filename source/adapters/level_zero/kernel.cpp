@@ -43,6 +43,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
         *OutEvent ///< [in,out][optional] return an event object that identifies
                   ///< this particular kernel execution instance.
 ) {
+  util::LatencyTracker tracker(KernelEnqueueLatency);
+
   auto ZeDevice = Queue->Device->ZeDevice;
 
   ze_kernel_handle_t ZeKernel{};
