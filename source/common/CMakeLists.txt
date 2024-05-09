@@ -3,9 +3,6 @@
 # See LICENSE.TXT
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-if (UR_ENABLE_LATENCY_TRACKER)
-    set (EXTRA_COMMON_SOURCES latency_tracker.cpp)
-endif()
 
 add_ur_library(ur_common STATIC
     umf_helpers.hpp
@@ -60,12 +57,6 @@ target_link_libraries(ur_common PUBLIC
     ${CMAKE_DL_LIBS}
     ${PROJECT_NAME}::headers
 )
-
-if (UR_ENABLE_LATENCY_TRACKER)
-    find_package(Folly REQUIRED)
-    find_package(gflags CONFIG REQUIRED)
-    target_link_libraries(ur_common PUBLIC Folly::folly)
-endif()
 
 if (UNIX)
     set(CMAKE_THREAD_PREFER_PTHREAD TRUE)

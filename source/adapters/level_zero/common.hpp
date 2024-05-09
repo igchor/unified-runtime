@@ -172,11 +172,12 @@ static auto getUrResultString = [](ur_result_t Result) {
   }
 };
 
-extern util::PercentileStats KernelEnqueueLatency;
-extern util::PercentileStats getCmdListLatency;
-extern util::PercentileStats createEventLatency;
-extern util::PercentileStats createAndRetainUrZeEventListLatency;
-extern util::PercentileStats createEventAndAssociateQueueLatency;
+extern util::PercentileStats *KernelEnqueueLatency;
+extern util::PercentileStats *getCmdListLatency;
+extern util::PercentileStats *createAndRetainUrZeEventListLatency;
+extern util::PercentileStats *createEventAndAssociateQueueLatency;
+extern util::PercentileStats *Enqueue2;
+extern util::PercentileStats *Enqueue3;
 
 // Trace an internal PI call; returns in case of an error.
 #define UR_CALL(Call)                                                          \

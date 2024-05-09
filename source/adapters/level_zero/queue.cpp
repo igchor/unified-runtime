@@ -24,6 +24,8 @@
 #include "ur_util.hpp"
 #include "ze_api.h"
 
+#include <folly/Format.h>
+
 // Hard limit for the event completion batches.
 static const uint64_t CompletionBatchesMax = [] {
   // Default value chosen empirically to maximize the number of asynchronous
@@ -1862,7 +1864,7 @@ ur_result_t createEventAndAssociateQueue(ur_queue_handle_t Queue,
                                          ur_command_list_ptr_t CommandList,
                                          bool IsInternal, bool IsMultiDevice,
                                          std::optional<bool> HostVisible) {
-  util::LatencyTracker tracker(createEventAndAssociateQueueLatency);
+  util::LatencyTracker tracker(*createEventAndAssociateQueueLatency);
   if (!HostVisible.has_value()) {
     // Internal/discarded events do not need host-scope visibility.
     HostVisible = IsInternal ? false : Queue->ZeEventsScope == AllHostVisible;

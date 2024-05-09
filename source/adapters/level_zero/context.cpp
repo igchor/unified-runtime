@@ -648,7 +648,7 @@ ur_result_t ur_context_handle_t_::getAvailableCommandList(
     bool UseCopyEngine, uint32_t NumEventsInWaitList,
     const ur_event_handle_t *EventWaitList, bool AllowBatching,
     ze_command_queue_handle_t *ForcedCmdQueue) {
-  util::LatencyTracker tracker(getCmdListLatency);
+  util::LatencyTracker tracker(*getCmdListLatency);
 
   // Immediate commandlists have been pre-allocated and are always available.
   if (Queue->UsingImmCmdLists) {

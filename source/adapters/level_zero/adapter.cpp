@@ -142,7 +142,8 @@ void globalAdapterOnDemandCleanup() {
 }
 
 ur_result_t adapterStateTeardown() {
-  auto &out = std::cout;
+
+      std::stringstream out;
   auto printLatencies =
             [&out](folly::StringPiece cat,
                    const util::PercentileStats::Estimates& latency) {
@@ -157,13 +158,18 @@ ur_result_t adapterStateTeardown() {
               fmtLatency("p99", latency.p99);
             };
 
+
+  printLatencies("kernelEnqueueLatency", KernelEnqueueLatency->estimate());
+  printLatencies("getAvailableCommandListLatency", getCmdListLatency->estimate());
+  printLatencies("createAndRetainUrZeEventList", createAndRetainUrZeEventListLatency->estimate());
+  printLatencies("createEventAndAssociateQueue", createEventAndAssociateQueueLatency->estimate());
+printLatencies("enqueu + capture", Enqueue2->estimate());
+printLatencies("zeCommandListAppendLaunchKernel", Enqueue3->estimate());
+
+  std::cerr << out.str() << std::endl;
+
   bool LeakFound = false;
 
-  printLatencies("KernelEnqueueLatency", KernelEnqueueLatency.estimate());
-  printLatencies("getCmdListLatency", getCmdListLatency.estimate());
-  printLatencies("createEventLatency", createEventLatency.estimate());
-  printLatencies("createAndRetainUrZeEventList", createAndRetainUrZeEventListLatency.estimate());
-  printLatencies("createEventAndAssociateQueue", createEventAndAssociateQueueLatency.estimate());
 
   // Print the balance of various create/destroy native calls.
   // The idea is to verify if the number of create(+) and destroy(-) calls are

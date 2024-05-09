@@ -12,11 +12,13 @@
 #include "logger/ur_logger.hpp"
 #include "usm.hpp"
 
-util::PercentileStats KernelEnqueueLatency;
-util::PercentileStats getCmdListLatency;
-util::PercentileStats createEventLatency;
-util::PercentileStats createAndRetainUrZeEventListLatency;
-util::PercentileStats createEventAndAssociateQueueLatency;
+util::PercentileStats *KernelEnqueueLatency = new util::PercentileStats;
+util::PercentileStats *getCmdListLatency= new util::PercentileStats;
+util::PercentileStats *createEventLatency= new util::PercentileStats;
+util::PercentileStats *createAndRetainUrZeEventListLatency= new util::PercentileStats;
+util::PercentileStats *createEventAndAssociateQueueLatency= new util::PercentileStats;
+util::PercentileStats *Enqueue2 = new util::PercentileStats;
+util::PercentileStats *Enqueue3 = new util::PercentileStats;
 
 ur_result_t ze2urResult(ze_result_t ZeResult) {
   if (ZeResult == ZE_RESULT_SUCCESS)

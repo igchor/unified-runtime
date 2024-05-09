@@ -43,7 +43,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
         *OutEvent ///< [in,out][optional] return an event object that identifies
                   ///< this particular kernel execution instance.
 ) {
-  util::LatencyTracker tracker(KernelEnqueueLatency);
+  util::LatencyTracker tracker(*KernelEnqueueLatency);
 
   auto ZeDevice = Queue->Device->ZeDevice;
 
@@ -166,7 +166,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
     ZeThreadGroupDimensions.groupCountX =
         static_cast<uint32_t>(GlobalWorkSize3D[0] / WG[0]);
     WG[1] = WG[2] = 1;
-    break;
+   break;
 
   default:
     logger::error("urEnqueueKernelLaunch: unsupported work_dim");
@@ -194,6 +194,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
   }
 
   ZE2UR_CALL(zeKernelSetGroupSize, (ZeKernel, WG[0], WG[1], WG[2]));
+
 
   bool UseCopyEngine = false;
   _ur_ze_event_list_t TmpWaitList;
@@ -233,6 +234,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
     Queue->KernelsToBeSubmitted.push_back(Kernel);
 
   if (Queue->UsingImmCmdLists && IndirectAccessTrackingEnabled) {
+
+  util::LatencyTracker tracker2(*Enqueue2);
     // If using immediate commandlists then gathering of indirect
     // references and appending to the queue (which means submission)
     // must be done together.
@@ -246,11 +249,15 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
     // execution.
     ContextsLock.lock();
     Queue->CaptureIndirectAccesses();
+
+
+	  util::LatencyTracker tracker3(*Enqueue3);
     // Add the command to the command list, which implies submission.
     ZE2UR_CALL(zeCommandListAppendLaunchKernel,
                (CommandList->first, ZeKernel, &ZeThreadGroupDimensions, ZeEvent,
                 (*Event)->WaitList.Length, (*Event)->WaitList.ZeEventList));
   } else {
+	  util::LatencyTracker tracker3(*Enqueue3);
     // Add the command to the command list for later submission.
     // No lock is needed here, unlike the immediate commandlist case above,
     // because the kernels are not actually submitted yet. Kernels will be
@@ -264,6 +271,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
                 "  ZeEvent {}",
                 ur_cast<std::uintptr_t>(ZeEvent));
   printZeEventList((*Event)->WaitList);
+
 
   // Execute command list asynchronously, as the event will be used
   // to track down its completion.

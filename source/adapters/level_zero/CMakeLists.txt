@@ -126,7 +126,14 @@ if(NOT WIN32)
     target_sources(ur_adapter_level_zero
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/adapter_lib_init_linux.cpp
+	     ${CMAKE_CURRENT_SOURCE_DIR}../../../common/latency_tracker.cpp
     )
+endif()
+
+if (UR_ENABLE_LATENCY_TRACKER)
+    find_package(Folly REQUIRED)
+    find_package(gflags CONFIG REQUIRED)
+    target_link_libraries(ur_adapter_level_zero PUBLIC Folly::folly)
 endif()
 
 # TODO: fix level_zero adapter conversion warnings
