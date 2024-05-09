@@ -56,8 +56,6 @@ private:
   ur_command_list_handler_t computeHandler;
   ur_command_list_handler_t *lastHandler = nullptr;
 
-  rolling_stats kernelEnqueueLatency;
-
   ur_command_list_handler_t *
   getCommandListHandler(CommandListPreference preference);
   ze_event_handle_t getSignalEvent(ur_command_list_handler_t *handler,

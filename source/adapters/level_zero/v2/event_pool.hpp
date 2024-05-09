@@ -30,8 +30,7 @@ namespace v2 {
 class event_pool {
 public:
   event_pool(std::unique_ptr<event_provider> Provider)
-      : provider(std::move(Provider)), allocateLatency("event_pool::allocate"),
-        freeLatency("event_pool::free"){};
+      : provider(std::move(Provider)){};
 
   event_pool(event_pool &&other) = default;
   event_pool &operator=(event_pool &&other) = default;
@@ -51,9 +50,6 @@ private:
 
   std::deque<ur_event_handle_t_> events;
   std::vector<ur_event_handle_t_ *> freelist;
-
-  rolling_stats allocateLatency;
-  rolling_stats freeLatency;
 };
 
 } // namespace v2

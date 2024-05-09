@@ -10,12 +10,14 @@
 #include "event_pool.hpp"
 #include "ur_api.h"
 
+#include "../common/latency_tracker.hpp"
+
 namespace v2 {
 
 static constexpr size_t EVENTS_BURST = 64;
 
 ur_event_handle_t_ *event_pool::allocate() {
-  rolling_latency_tracker tracker(allocateLatency);
+  TRACK_SCOPE_LATENCY("event_pool::allocate");
 
   if (freelist.empty()) {
     auto start = events.size();
@@ -33,7 +35,7 @@ ur_event_handle_t_ *event_pool::allocate() {
 }
 
 void event_pool::free(ur_event_handle_t_ *event) {
-  rolling_latency_tracker tracker(freeLatency);
+  TRACK_SCOPE_LATENCY("event_pool::free");
   event->reset();
   freelist.push_back(event);
 }

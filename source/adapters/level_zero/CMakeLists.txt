@@ -122,7 +122,6 @@ add_ur_adapter(${TARGET_NAME}
     ${CMAKE_CURRENT_SOURCE_DIR}/v2/event_pool_cache.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/v2/event_pool.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/v2/event.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/v2/latency_tracker.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ur_level_zero.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/context.cpp

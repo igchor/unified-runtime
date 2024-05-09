@@ -11,6 +11,7 @@
 #include "../common.hpp"
 #include "../context.hpp"
 #include "event_provider.hpp"
+#include "../common/latency_tracker.hpp"
 #include "ur_api.h"
 #include "ze_api.h"
 #include <memory>
@@ -69,10 +70,10 @@ std::unique_ptr<provider_pool> provider_normal::createProviderPool() {
 }
 
 event_allocation provider_normal::allocate() {
-  rolling_latency_tracker tracker(allocateLatency);
+  TRACK_SCOPE_LATENCY("provider_normal::allocate");
 
   if (pools.empty()) {
-    rolling_latency_tracker tracker(poolCreateLatency);
+    TRACK_SCOPE_LATENCY("provider_normal::allocate#createProviderPool");
     pools.emplace_back(createProviderPool());
   }
 
@@ -84,7 +85,7 @@ event_allocation provider_normal::allocate() {
     }
   }
 
-  rolling_latency_tracker trackerSlowPath(slowPathLatency);
+  TRACK_SCOPE_LATENCY("provider_normal::allocate#slowPath");
   std::sort(pools.begin(), pools.end(), [](auto &a, auto &b) {
     return a->nfree() < b->nfree(); // asceding
   });

@@ -49,9 +49,7 @@ public:
   provider_normal(ur_context_handle_t context, ur_device_handle_t device,
                   event_type etype, queue_type qtype)
       : producedType(etype), queueType(qtype), urContext(context),
-        urDevice(device), allocateLatency("event_provider_normal::allocate"),
-        slowPathLatency("event_provider_normal::allocate#slowPath"),
-        poolCreateLatency("event_provider_normal::poolCreate") {
+        urDevice(device) {
     urDeviceRetain(device);
   }
 
@@ -68,10 +66,6 @@ private:
 
   std::unique_ptr<provider_pool> createProviderPool();
   std::vector<std::unique_ptr<provider_pool>> pools;
-
-  rolling_stats allocateLatency;
-  rolling_stats slowPathLatency;
-  rolling_stats poolCreateLatency;
 };
 
 } // namespace v2

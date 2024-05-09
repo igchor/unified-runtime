@@ -13,6 +13,8 @@
 #include "../kernel.hpp"
 #include "../program.hpp"
 
+#include "../common/latency_tracker.hpp"
+
 namespace v2 {
 
 ur_wait_list_t::ur_wait_list_t(const ur_event_handle_t *phWaitEvents,
@@ -99,9 +101,7 @@ ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t(
       copyHandler(hContext, hDevice, pProps, queue_group_type::MainCopy,
                   eventPool.get()),
       computeHandler(hContext, hDevice, pProps, queue_group_type::Compute,
-                     eventPool.get()),
-      kernelEnqueueLatency(
-          "ur_queue_immediate_in_order_t::enqueueKernelLaunch") {}
+                     eventPool.get()) {}
 
 ur_command_list_handler_t *ur_queue_immediate_in_order_t::getCommandListHandler(
     CommandListPreference preference) {
@@ -188,7 +188,7 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueKernelLaunch(
     const size_t *pGlobalWorkOffset, const size_t *pGlobalWorkSize,
     const size_t *pLocalWorkSize, uint32_t numEventsInWaitList,
     const ::ur_event_handle_t *phEventWaitList, ::ur_event_handle_t *phEvent) {
-  rolling_latency_tracker tracker(kernelEnqueueLatency);
+  TRACK_SCOPE_LATENCY("kernelEnqueueLatency");
 
   UR_ASSERT(hKernel->Program, UR_RESULT_ERROR_INVALID_NULL_POINTER);
 
