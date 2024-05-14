@@ -24,6 +24,72 @@
 #include "ur_util.hpp"
 #include "ze_api.h"
 
+namespace v2 {
+ur_wait_list_t::ur_wait_list_t(const ur_event_handle_t *phWaitEvents,
+                               uint32_t numWaitEvents,
+                               ze_event_handle_t *pExtraZeEvent) {
+  auto TotalEvents = numWaitEvents + (pExtraZeEvent != nullptr);
+  if (TotalEvents > 1) {
+    std::vector<ze_event_handle_t> WaitListVec;
+    WaitListVec.reserve(TotalEvents);
+
+    for (uint32_t i = 0; i < numWaitEvents; i++) {
+      WaitListVec.push_back(phWaitEvents[i]->ZeEvent);
+    }
+
+    if (pExtraZeEvent) {
+      WaitListVec.push_back(*pExtraZeEvent);
+    }
+
+    WaitList = std::move(WaitListVec);
+  } else if (numWaitEvents == 1) {
+    WaitList = &phWaitEvents[0]->ZeEvent;
+  } else { // pExtraZeEvent != nullptr
+    WaitList = pExtraZeEvent;
+  }
+}
+
+std::pair<ze_event_handle_t *, uint32_t> ur_wait_list_t::getView() {
+  if (auto singleEvent = std::get_if<ze_event_handle_t *>(&WaitList)) {
+    return {*singleEvent, 1};
+  } else {
+    auto &vec = std::get<std::vector<ze_event_handle_t>>(WaitList);
+    return {vec.data(), vec.size()};
+  }
+}
+ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t() {
+  // TODO:
+  // - get EventPool from Context cache (or use zeEventCreate without pool
+  // once available)
+  // - get CommandList(s) from Context cache
+}
+
+ur_command_list_handler_t *ur_queue_immediate_in_order_t::getCommandListHandler(
+    CommandListPreference Preference) {
+  if (Preference == CommandListPreference::Copy && BCS.CommandList) {
+    return &BCS;
+  } else {
+    return &CCS;
+  }
+}
+
+ze_event_handle_t ur_queue_immediate_in_order_t::getSignalEvent(
+    ur_command_list_handler_t *handler, ur_event_handle_t *hUserEvent) {
+  if (!hUserEvent) {
+    return handler->Event;
+  }
+
+  // TODO
+}
+
+ur_wait_list_t ur_queue_immediate_in_order_t::getWaitList(
+    ur_command_list_handler_t *handler, uint32_t numWaitEvents,
+    const ur_event_handle_t *phWaitEvents) {
+  auto ExtraWaitEvent = handler != LastHandler ? &LastHandler->Event : nullptr;
+  return ur_wait_list_t(phWaitEvents, numWaitEvents, ExtraWaitEvent);
+}
+} // namespace v2
+
 // Hard limit for the event completion batches.
 static const uint64_t CompletionBatchesMax = [] {
   // Default value chosen empirically to maximize the number of asynchronous
@@ -498,6 +564,24 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
             reinterpret_cast<const ur_queue_index_properties_t *>(extendedDesc);
         ForceComputeIndex = IndexProperties->computeIndex;
       }
+    }
+  }
+
+  // optimized path for immediate, in-order command lists
+  if ((Flags & UR_QUEUE_FLAG_SUBMISSION_IMMEDIATE) ||
+      Device->useImmediateCommandLists()) {
+    try {
+      std::vector<ze_command_queue_handle_t> ZeComputeCommandQueues{};
+      std::vector<ze_command_queue_handle_t> ZeCopyCommandQueues{};
+      *Queue = new ur_queue_handle_t_(ZeComputeCommandQueues,
+                                      ZeCopyCommandQueues, Context, Device,
+                                      true, Flags, ForceComputeIndex);
+      (*Queue)->V2QueueDispatcher.emplace(v2::ur_queue_immediate_in_order_t{});
+      return UR_RESULT_SUCCESS;
+    } catch (const std::bad_alloc &) {
+      return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
+    } catch (...) {
+      return UR_RESULT_ERROR_UNKNOWN;
     }
   }
 

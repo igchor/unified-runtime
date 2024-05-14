@@ -31,6 +31,82 @@ extern "C" {
 ur_result_t urQueueReleaseInternal(ur_queue_handle_t Queue);
 } // extern "C"
 
+namespace v2 {
+enum class CommandListPreference { Copy, Compute };
+
+struct ur_command_list_handler_t {
+  ze_command_list_handle_t CommandList;
+
+  // Last Command Event
+  ze_event_handle_t Event;
+};
+
+struct ur_wait_list_t {
+  ur_wait_list_t(const ur_event_handle_t *phWaitEvents, uint32_t numWaitEvents,
+                 ze_event_handle_t *pExtraZeEvent);
+  std::pair<ze_event_handle_t *, uint32_t> getView();
+
+private:
+  std::variant<std::vector<ze_event_handle_t>, ze_event_handle_t *> WaitList;
+};
+
+struct ur_queue_immediate_in_order_t {
+  ur_queue_immediate_in_order_t();
+
+  template <typename F>
+  [[nodiscard]] ur_result_t
+  enqueue(ur_event_handle_t *hUserEvent, uint32_t numWaitEvents,
+          const ur_event_handle_t *phWaitEvents,
+          CommandListPreference Preference, F &&levelZeroEnqueue) {
+    auto Handler = getCommandListHandler(Preference);
+    auto SignalEvent = getSignalEvent(Handler, hUserEvent);
+
+    auto WaitList = getWaitList(Handler, numWaitEvents, phWaitEvents);
+    auto [ZeWaitEvents, ZeNumWaitEvents] = WaitList.getView();
+
+    LastHandler = Handler;
+
+    return levelZeroEnqueue(Handler->CommandList, SignalEvent, ZeNumWaitEvents,
+                            ZeWaitEvents);
+  }
+
+private:
+  ur_command_list_handler_t *
+  getCommandListHandler(CommandListPreference Preference);
+  ze_event_handle_t getSignalEvent(ur_command_list_handler_t *handler,
+                                   ur_event_handle_t *hUserEvent);
+  ur_wait_list_t getWaitList(ur_command_list_handler_t *handler,
+                             uint32_t numWaitEvents,
+                             const ur_event_handle_t *phWaitEvents);
+
+  // Ptr to command list and event used for last enque
+  // (either &CCS or &BCS)
+  ur_command_list_handler_t *LastHandler = nullptr;
+
+  ur_command_list_handler_t CCS;
+  ur_command_list_handler_t BCS;
+};
+
+struct ur_queue_dispatcher_t {
+  template <typename QueueT> ur_queue_dispatcher_t(QueueT &&Q) : Queue(Q) {}
+
+  ur_queue_dispatcher_t(const ur_queue_dispatcher_t &) = delete;
+  ur_queue_dispatcher_t &operator=(const ur_queue_dispatcher_t &) = delete;
+
+  template <typename... Args>
+  [[nodiscard]] ur_result_t enqueue(Args &&...args) {
+    if (auto Imm = std::get_if<ur_queue_immediate_in_order_t>(&Queue)) {
+      return Imm->enqueue(std::forward<Args>(args)...);
+    } else {
+      assert(0);
+    }
+  }
+
+private:
+  std::variant<ur_queue_immediate_in_order_t> Queue;
+};
+} // namespace v2
+
 struct ur_completion_batch;
 using ur_completion_batch_list = std::list<ur_completion_batch>;
 using ur_completion_batch_it = ur_completion_batch_list::iterator;
@@ -687,6 +763,8 @@ struct ur_queue_handle_t_ : _ur_object {
 
   // Threshold for cleaning up the EventList for immediate command lists.
   size_t getImmdCmmdListsEventCleanupThreshold();
+
+  std::optional<v2::ur_queue_dispatcher_t> V2QueueDispatcher;
 };
 
 // This helper function creates a ur_event_handle_t and associate a
