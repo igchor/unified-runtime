@@ -52,7 +52,7 @@ command_list_cache::~command_list_cache() {
     while (Kv.second.size() > 0) {
       auto ZeCommandList = Kv.second.top();
       if (ZeCommandList) {
-        ZE_CALL_NOCHECK(zeCommandListDestroy, (ZeCommandList));
+        // ZE_CALL_NOCHECK(zeCommandListDestroy, (ZeCommandList));
       }
       Kv.second.pop();
     }
@@ -84,6 +84,58 @@ void command_list_cache::addCommandList(const command_list_descriptor_t &desc,
   auto [it, _] = ZeCommandListCache.try_emplace(desc);
   it->second.push(cmdList);
 }
+
+// TODO: env
+static constexpr size_t EventsPerPool = 256;
+
+ur_event_pool_t::ur_event_pool_t(ze_context_handle_t ZeContext,
+                                 ze_device_handle_t ZeDevice, size_t Capacity)
+    : Capacity(Capacity), Events(Capacity) {
+  ze_event_pool_counter_based_exp_desc_t counterBasedExt = {
+      ZE_STRUCTURE_TYPE_COUNTER_BASED_EVENT_POOL_EXP_DESC};
+  ZeStruct<ze_event_pool_desc_t> ZeEventPoolDesc;
+  ZeEventPoolDesc.count = EventsPerPool;
+  ZeEventPoolDesc.flags = 0;
+  // TODO
+  // if (HostVisible)
+  ZeEventPoolDesc.flags |= ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
+  // if (ProfilingEnabled)
+  //   ZeEventPoolDesc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
+  logger::debug("ze_event_pool_desc_t flags set to: {}", ZeEventPoolDesc.flags);
+  counterBasedExt.flags = ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_IMMEDIATE;
+  ZeEventPoolDesc.pNext = &counterBasedExt;
+
+  // TODO: get event pools from contex cache and return in destructor
+  ze_event_pool_handle_t ZePool;
+  ZE2UR_CALL_THROWS(zeEventPoolCreate,
+                    (ZeContext, &ZeEventPoolDesc, 1, &ZeDevice, &ZePool));
+
+  for (uint32_t i = 0; i < Capacity; i++) {
+    ZeStruct<ze_event_desc_t> ZeEventDesc;
+    ZeEventDesc.index = i;
+    ZeEventDesc.wait = 0;
+    ZeEventDesc.signal = ZE_EVENT_SCOPE_FLAG_HOST;
+
+    ZE2UR_CALL_THROWS(zeEventCreate, (ZePool, &ZeEventDesc, &Events[i]));
+  }
+}
+
+ur_event_t::~ur_event_t() { EventPool->addEvent(*this); }
+
+ur_event_t ur_event_pool_t::getEvent() {
+  if (Events.empty()) {
+    return {this, nullptr};
+  }
+
+  auto Event = ur_event_t{this, Events.back()};
+  Events.pop_back();
+  return Event;
+}
+
+void ur_event_pool_t::addEvent(ur_event_t &Event) {
+  Events.push_back(Event.ZeEvent);
+}
+
 } // namespace v2
 
 UR_APIEXPORT ur_result_t UR_APICALL urContextCreate(

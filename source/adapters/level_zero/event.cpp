@@ -301,8 +301,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueEventsWaitWithBarrier(
   for (auto &QueueMap :
        {Queue->ComputeQueueGroupsByTID, Queue->CopyQueueGroupsByTID})
     for (auto &QueueGroup : QueueMap) {
-      bool UseCopyEngine = QueueGroup.second.Type !=
-                           ur_queue_handle_legacy_t_::queue_type::Compute;
+      bool UseCopyEngine = QueueGroup.second.Type != queue_type::Compute;
       if (Queue->UsingImmCmdLists) {
         // If immediate command lists are being used, each will act as their own
         // queue, so we must insert a barrier into each.
@@ -1027,7 +1026,6 @@ ur_result_t urEventReleaseInternal(ur_event_handle_t Event) {
   // When we add an event to the cache we need to check whether profiling is
   // enabled or not, so we access properties of the queue and that's why queue
   // must released later.
-  auto Queue = Event->UrQueue;
   if (DisableEventsCaching || !Event->OwnNativeHandle) {
     delete Event;
   } else {

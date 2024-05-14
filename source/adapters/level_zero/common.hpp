@@ -320,6 +320,14 @@ bool setEnvVar(const char *name, const char *value);
 ur_result_t ze2urResult(ze_result_t ZeResult);
 
 // Trace a call to Level-Zero RT
+#define ZE2UR_CALL_THROWS(ZeName, ZeArgs)                                      \
+  {                                                                            \
+    ze_result_t ZeResult = ZeName ZeArgs;                                      \
+    if (auto Result = ZeCall().doCall(ZeResult, #ZeName, #ZeArgs, true))       \
+      throw ur_exception_t{ze2urResult(Result)};                               \
+  }
+
+// Trace a call to Level-Zero RT
 #define ZE2UR_CALL(ZeName, ZeArgs)                                             \
   {                                                                            \
     ze_result_t ZeResult = ZeName ZeArgs;                                      \

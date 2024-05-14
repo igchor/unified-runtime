@@ -264,6 +264,11 @@ inline std::size_t combine_hashes(std::size_t seed, const T &v, Args... args) {
     return combine_hashes(seed ^ std::hash<T>{}(v), args...);
 }
 
+struct ur_exception_t {
+    ur_exception_t(ur_result_t result) : result(result) {}
+    ur_result_t result;
+};
+
 inline ur_result_t exceptionToResult(std::exception_ptr eptr) {
     try {
         if (eptr) {
@@ -274,6 +279,8 @@ inline ur_result_t exceptionToResult(std::exception_ptr eptr) {
         return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
     } catch (const ur_result_t &e) {
         return e;
+    } catch (ur_exception_t &e) {
+        return e.result;
     } catch (...) {
         return UR_RESULT_ERROR_UNKNOWN;
     }
