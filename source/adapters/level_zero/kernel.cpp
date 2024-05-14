@@ -124,6 +124,93 @@ ur_result_t calculateKernelWorkDimensions(
   return UR_RESULT_SUCCESS;
 }
 
+[[nodiscard]] static ur_result_t urEnqueueKernelLaunchV2(
+    v2::ur_queue_dispatcher_t *Queue, ///< [in] handle of the queue object
+    ur_kernel_handle_t Kernel,        ///< [in] handle of the kernel object
+    uint32_t WorkDim, ///< [in] number of dimensions, from 1 to 3, to specify
+                      ///< the global and work-group work-items
+    const size_t
+        *GlobalWorkOffset, ///< [in] pointer to an array of workDim unsigned
+                           ///< values that specify the offset used to
+                           ///< calculate the global ID of a work-item
+    const size_t *GlobalWorkSize, ///< [in] pointer to an array of workDim
+                                  ///< unsigned values that specify the number
+                                  ///< of global work-items in workDim that
+                                  ///< will execute the kernel function
+    const size_t
+        *LocalWorkSize, ///< [in][optional] pointer to an array of workDim
+                        ///< unsigned values that specify the number of local
+                        ///< work-items forming a work-group that will execute
+                        ///< the kernel function. If nullptr, the runtime
+                        ///< implementation will choose the work-group size.
+    uint32_t NumEventsInWaitList, ///< [in] size of the event wait list
+    const ur_event_handle_t
+        *EventWaitList, ///< [in][optional][range(0, numEventsInWaitList)]
+                        ///< pointer to a list of events that must be complete
+                        ///< before the kernel execution. If nullptr, the
+                        ///< numEventsInWaitList must be 0, indicating that no
+                        ///< wait event.
+    ur_event_handle_t
+        *OutEvent ///< [in,out][optional] return an event object that identifies
+                  ///< this particular kernel execution instance.
+) {
+  auto Device = Queue->get_device();
+  ze_kernel_handle_t ZeKernel = Kernel->getZeKernel(Device);
+  if (!ZeKernel) {
+    return UR_RESULT_ERROR_INVALID_QUEUE;
+  }
+
+  // Lock automatically releases when this goes out of scope.
+  std::scoped_lock<ur_shared_mutex, ur_shared_mutex> Lock(Queue->Mutex,
+                                                          Kernel->Mutex);
+  if (GlobalWorkOffset != NULL) {
+    if (!Device->Platform->ZeDriverGlobalOffsetExtensionFound) {
+      logger::error("No global offset extension found on this driver");
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+
+    ZE2UR_CALL(zeKernelSetGlobalOffsetExp,
+               (ZeKernel, GlobalWorkOffset[0], GlobalWorkOffset[1],
+                GlobalWorkOffset[2]));
+  }
+
+  // TODO: move this to SetPendingArgs
+  // If there are any pending arguments set them now.
+  for (auto &Arg : Kernel->PendingArguments) {
+    // The ArgValue may be a NULL pointer in which case a NULL value is used for
+    // the kernel argument declared as a pointer to global or constant memory.
+    char **ZeHandlePtr = nullptr;
+    if (Arg.Value) {
+      UR_CALL(Arg.Value->getZeHandlePtr(ZeHandlePtr, Arg.AccessMode, Device));
+    }
+    ZE2UR_CALL(zeKernelSetArgumentValue,
+               (ZeKernel, Arg.Index, Arg.Size, ZeHandlePtr));
+  }
+  Kernel->PendingArguments.clear();
+
+  ze_group_count_t ZeThreadGroupDimensions{1, 1, 1};
+  uint32_t WG[3];
+
+  UR_CALL(calculateKernelWorkDimensions(Kernel, Device, ZeThreadGroupDimensions,
+                                        WG, WorkDim, GlobalWorkSize,
+                                        LocalWorkSize));
+
+  ZE2UR_CALL(zeKernelSetGroupSize, (ZeKernel, WG[0], WG[1], WG[2]));
+
+  auto L0Enqueue = [&](ze_command_list_handle_t CommandList,
+                       ze_event_handle_t SignalEvent, uint32_t WaitListLength,
+                       ze_event_handle_t *WaitList) {
+    ZE2UR_CALL_THROWS(zeCommandListAppendLaunchKernel,
+                      (CommandList, ZeKernel, &ZeThreadGroupDimensions,
+                       SignalEvent, WaitListLength, WaitList));
+  };
+
+  Queue->enqueue(OutEvent, NumEventsInWaitList, EventWaitList,
+                 v2::CommandListPreference::Compute, std::move(L0Enqueue));
+
+  return UR_RESULT_SUCCESS;
+}
+
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
     ur_queue_handle_t UrQueue, ///< [in] handle of the queue object
     ur_kernel_handle_t Kernel, ///< [in] handle of the kernel object
@@ -154,6 +241,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
         *OutEvent ///< [in,out][optional] return an event object that identifies
                   ///< this particular kernel execution instance.
 ) {
+  if (UrQueue->is_dispatcher()) {
+    return urEnqueueKernelLaunchV2(
+        Dispatcher(UrQueue), Kernel, WorkDim, GlobalWorkOffset, GlobalWorkSize,
+        LocalWorkSize, NumEventsInWaitList, EventWaitList, OutEvent);
+  }
+
   auto Queue = Legacy(UrQueue);
   ze_kernel_handle_t ZeKernel = Kernel->getZeKernel(Queue->Device);
 
@@ -190,16 +283,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
   Kernel->PendingArguments.clear();
 
   ze_group_count_t ZeThreadGroupDimensions{1, 1, 1};
-  uint32_t WG[3]{};
-
-  if (LocalWorkSize) {
-    UR_ASSERT(LocalWorkSize[0] < (std::numeric_limits<uint32_t>::max)(),
-              UR_RESULT_ERROR_INVALID_VALUE);
-    UR_ASSERT(LocalWorkSize[1] < (std::numeric_limits<uint32_t>::max)(),
-              UR_RESULT_ERROR_INVALID_VALUE);
-    UR_ASSERT(LocalWorkSize[2] < (std::numeric_limits<uint32_t>::max)(),
-              UR_RESULT_ERROR_INVALID_VALUE);
-  }
+  uint32_t WG[3];
 
   UR_CALL(calculateKernelWorkDimensions(Kernel, Queue->Device,
                                         ZeThreadGroupDimensions, WG, WorkDim,

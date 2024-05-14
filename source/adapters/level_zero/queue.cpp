@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 #include <string.h>
 #include <vector>
@@ -23,6 +24,135 @@
 #include "ur_level_zero.hpp"
 #include "ur_util.hpp"
 #include "ze_api.h"
+
+namespace v2 {
+
+ur_wait_list_t::ur_wait_list_t(const ur_event_handle_t *phWaitEvents,
+                               uint32_t numWaitEvents,
+                               ze_event_handle_t *pExtraZeEvent) {
+  auto TotalEvents = numWaitEvents + (pExtraZeEvent != nullptr);
+  if (TotalEvents > 1) {
+    std::vector<ze_event_handle_t> WaitListVec;
+    WaitListVec.reserve(TotalEvents);
+
+    for (uint32_t i = 0; i < numWaitEvents; i++) {
+      WaitListVec.push_back(phWaitEvents[i]->ZeEvent);
+    }
+
+    if (pExtraZeEvent) {
+      WaitListVec.push_back(*pExtraZeEvent);
+    }
+
+    WaitList = std::move(WaitListVec);
+  } else if (numWaitEvents == 1) {
+    WaitList = &phWaitEvents[0]->ZeEvent;
+  } else if (pExtraZeEvent != nullptr) {
+    WaitList = pExtraZeEvent;
+  } else { // no events
+    WaitList = std::monostate{};
+  }
+}
+
+std::pair<ze_event_handle_t *, uint32_t> ur_wait_list_t::getView() {
+  if (auto singleEvent = std::get_if<ze_event_handle_t *>(&WaitList)) {
+    return {*singleEvent, 1};
+  } else if (auto waitList =
+                 std::get_if<std::vector<ze_event_handle_t>>(&WaitList)) {
+    return {waitList->data(), waitList->size()};
+  } else {
+    return {nullptr, 0};
+  }
+}
+
+static ze_command_list_handle_t
+createOrGetZeCommandList(uint32_t Ordinal, ur_context_handle_t Context,
+                         ur_device_handle_t Device) {
+  ZeStruct<ze_command_queue_desc_t> QueueDesc;
+  QueueDesc.ordinal = Ordinal;
+  QueueDesc.mode = ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS;
+  QueueDesc.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL; // TODO
+  QueueDesc.flags = ZE_COMMAND_QUEUE_FLAG_IN_ORDER;
+
+  v2::immediate_command_list_descriptor_t Desc;
+  Desc.Device = Device->ZeDevice;
+  Desc.QueueDesc = QueueDesc;
+
+  auto ZeCommandList = Context->V2CommandListCache.getCommandList(Desc);
+  if (ZeCommandList)
+    return ZeCommandList;
+
+  ZE2UR_CALL_THROWS(
+      zeCommandListCreateImmediate,
+      (Context->ZeContext, Device->ZeDevice, &QueueDesc, &ZeCommandList));
+  return ZeCommandList;
+}
+
+ur_queue_immediate_in_order_t::~ur_queue_immediate_in_order_t() {
+  // TODO make this into a function
+  ZeStruct<ze_command_queue_desc_t> QueueDesc;
+  QueueDesc.ordinal = Device->QueueGroup[queue_type::Compute].ZeOrdinal;
+  QueueDesc.mode = ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS;
+  QueueDesc.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL; // TODO
+  QueueDesc.flags = ZE_COMMAND_QUEUE_FLAG_IN_ORDER;
+
+  v2::immediate_command_list_descriptor_t Desc;
+  Desc.Device = Device->ZeDevice;
+  Desc.QueueDesc = QueueDesc;
+
+  // TODO: move this to somewhere where we can check for errors
+  zeCommandListHostSynchronize(CCS.CommandList, 0);
+
+  // TODO + BCS
+  Context->V2CommandListCache.addCommandList(Desc, CCS.CommandList);
+}
+
+ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t(
+    ur_context_handle_t Context, ur_device_handle_t Device)
+    : Context(Context), Device(Device),
+      EventPool(Context->V2EventPool[Device->ZeDevice].get()) {
+  CCS.CommandList = createOrGetZeCommandList(
+      Device->QueueGroup[queue_type::Compute].ZeOrdinal, Context, Device);
+  CCS.Event = EventPool->getEvent().ZeEvent;
+
+  // if (Device->QueueGroup[queue_type::MainCopy].ZeOrdinal) {
+  //   BCS.CommandList =
+  //   createOrGetZeCommandList(Device->QueueGroup[queue_type::MainCopy].ZeOrdinal,
+  //   Context, Device); BCS.Event = EventPool.getEvent().ZeEvent;
+  // }
+}
+
+ur_command_list_handler_t *ur_queue_immediate_in_order_t::getCommandListHandler(
+    CommandListPreference Preference) {
+  if (Preference == CommandListPreference::Copy && BCS.CommandList) {
+    return &BCS;
+  } else {
+    return &CCS;
+  }
+}
+
+ze_event_handle_t ur_queue_immediate_in_order_t::getSignalEvent(
+    ur_command_list_handler_t *handler, ur_event_handle_t *hUserEvent) {
+  if (!hUserEvent) {
+    return handler->Event;
+  }
+
+  auto UrEvent = EventPool->getEvent();
+
+  *hUserEvent = new ur_event_handle_t_(UrEvent.ZeEvent, nullptr, Context,
+                                       UR_EXT_COMMAND_TYPE_USER, false);
+  (*hUserEvent)->V2Event = UrEvent;
+
+  return UrEvent.ZeEvent;
+}
+
+ur_wait_list_t ur_queue_immediate_in_order_t::getWaitList(
+    ur_command_list_handler_t *handler, uint32_t numWaitEvents,
+    const ur_event_handle_t *phWaitEvents) {
+  auto ExtraWaitEvent =
+      (LastHandler && handler != LastHandler) ? &LastHandler->Event : nullptr;
+  return ur_wait_list_t(phWaitEvents, numWaitEvents, ExtraWaitEvent);
+}
+} // namespace v2
 
 // Hard limit for the event completion batches.
 static const uint64_t CompletionBatchesMax = [] {
@@ -502,14 +632,32 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
     }
   }
 
+  // optimized path for immediate, in-order command lists
+  if ((Flags & UR_QUEUE_FLAG_SUBMISSION_IMMEDIATE) ||
+      Device->useImmediateCommandLists()) {
+    try {
+      std::vector<ze_command_queue_handle_t> ZeComputeCommandQueues{};
+      std::vector<ze_command_queue_handle_t> ZeCopyCommandQueues{};
+
+      // TODO: Flags
+      *Queue = new ur_queue_handle_t_(
+          std::in_place_type<v2::ur_queue_dispatcher_t>,
+          std::in_place_type<v2::ur_queue_immediate_in_order_t>, Context,
+          Device);
+      return UR_RESULT_SUCCESS;
+    } catch (const std::bad_alloc &) {
+      return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
+    } catch (...) {
+      return UR_RESULT_ERROR_UNKNOWN;
+    }
+  }
+
   UR_ASSERT(Context->isValidDevice(Device), UR_RESULT_ERROR_INVALID_DEVICE);
 
   // Create placeholder queues in the compute queue group.
   // Actual L0 queues will be created at first use.
   std::vector<ze_command_queue_handle_t> ZeComputeCommandQueues(
-      Device->QueueGroup[ur_queue_handle_legacy_t_::queue_type::Compute]
-          .ZeProperties.numQueues,
-      nullptr);
+      Device->QueueGroup[queue_type::Compute].ZeProperties.numQueues, nullptr);
 
   // Create placeholder queues in the copy queue group (main and link
   // native groups are combined into one group).
@@ -517,13 +665,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
   size_t NumCopyGroups = 0;
   if (Device->hasMainCopyEngine()) {
     NumCopyGroups +=
-        Device->QueueGroup[ur_queue_handle_legacy_t_::queue_type::MainCopy]
-            .ZeProperties.numQueues;
+        Device->QueueGroup[queue_type::MainCopy].ZeProperties.numQueues;
   }
   if (Device->hasLinkCopyEngine()) {
     NumCopyGroups +=
-        Device->QueueGroup[ur_queue_handle_legacy_t_::queue_type::LinkCopy]
-            .ZeProperties.numQueues;
+        Device->QueueGroup[queue_type::LinkCopy].ZeProperties.numQueues;
   }
   std::vector<ze_command_queue_handle_t> ZeCopyCommandQueues(NumCopyGroups,
                                                              nullptr);
@@ -842,7 +988,14 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreateWithNativeHandle(
 UR_APIEXPORT ur_result_t UR_APICALL urQueueFinish(
     ur_queue_handle_t UrQueue ///< [in] handle of the queue to be finished.
 ) {
+  if (UrQueue->is_dispatcher()) {
+    std::scoped_lock<ur_shared_mutex> Lock(Dispatcher(UrQueue)->Mutex);
+    Dispatcher(UrQueue)->synchronize();
+    return UR_RESULT_SUCCESS;
+  }
+
   auto Queue = Legacy(UrQueue);
+
   if (Queue->UsingImmCmdLists) {
     // Lock automatically releases when this goes out of scope.
     std::scoped_lock<ur_shared_mutex> Lock(Queue->Mutex);

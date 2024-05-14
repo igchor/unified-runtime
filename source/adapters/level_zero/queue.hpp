@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <ur/ur.hpp>
@@ -34,9 +35,138 @@ extern "C" {
 ur_result_t urQueueReleaseInternal(ur_queue_handle_t Queue);
 } // extern "C"
 
+using queue_type = ur_device_handle_t_::queue_group_info_t::type;
+
 namespace v2 {
-struct ur_queue_dispatcher_t {
-  // TODO
+enum class CommandListPreference { Copy, Compute };
+
+struct ur_command_list_handler_t {
+  ze_command_list_handle_t CommandList;
+
+  // Last Command Event
+  ze_event_handle_t Event;
+};
+
+struct ur_wait_list_t {
+  ur_wait_list_t(const ur_event_handle_t *phWaitEvents, uint32_t numWaitEvents,
+                 ze_event_handle_t *pExtraZeEvent);
+  std::pair<ze_event_handle_t *, uint32_t> getView();
+
+private:
+  std::variant<std::vector<ze_event_handle_t>, ze_event_handle_t *,
+               std::monostate>
+      WaitList;
+};
+
+// TODO: move this to Context.hpp
+//////////////////////////////
+struct ur_event_pool_t;
+
+struct ur_event_t {
+  ur_event_pool_t *EventPool;
+  ze_event_handle_t ZeEvent;
+
+  ~ur_event_t();
+};
+
+struct ur_event_pool_t {
+  ur_event_pool_t(ze_context_handle_t ZeContext, ze_device_handle_t ZeDevice,
+                  size_t Capacity);
+  ur_event_t getEvent();
+  void addEvent(ur_event_t &Event);
+
+private:
+  uint32_t Capacity;
+  ze_event_pool_handle_t EventPool;
+  std::deque<ze_event_handle_t> Events;
+};
+//////////////////////////////
+
+struct ur_queue_immediate_in_order_t {
+  ur_queue_immediate_in_order_t(ur_context_handle_t Context,
+                                ur_device_handle_t Device);
+
+  ~ur_queue_immediate_in_order_t();
+
+  template <typename F>
+  void enqueue(ur_event_handle_t *hUserEvent, uint32_t numWaitEvents,
+               const ur_event_handle_t *phWaitEvents,
+               CommandListPreference Preference, F &&levelZeroEnqueue) {
+    auto Handler = getCommandListHandler(Preference);
+    auto SignalEvent = getSignalEvent(Handler, hUserEvent);
+
+    auto WaitList = getWaitList(Handler, numWaitEvents, phWaitEvents);
+    auto [ZeWaitEvents, ZeNumWaitEvents] = WaitList.getView();
+
+    levelZeroEnqueue(Handler->CommandList, SignalEvent, ZeNumWaitEvents,
+                     ZeWaitEvents);
+
+    LastHandler = Handler;
+  }
+
+  void synchronize() {
+    if (!LastHandler)
+      return;
+
+    auto Event = LastHandler->Event;
+
+    // TODO: drop Queue mutex before calling host synchronize or make
+    // LastHandler an atomic?
+    ZE2UR_CALL_THROWS(zeEventHostSynchronize, (Event, UINT64_MAX));
+  }
+
+  const ur_context_handle_t Context;
+  const ur_device_handle_t Device;
+
+private:
+  ur_command_list_handler_t *
+  getCommandListHandler(CommandListPreference Preference);
+
+  ze_event_handle_t getSignalEvent(ur_command_list_handler_t *handler,
+                                   ur_event_handle_t *hUserEvent);
+
+  ur_wait_list_t getWaitList(ur_command_list_handler_t *handler,
+                             uint32_t numWaitEvents,
+                             const ur_event_handle_t *phWaitEvents);
+
+  // Ptr to command list and event used for last enque
+  // (either &CCS or &BCS)
+  ur_command_list_handler_t *LastHandler = nullptr;
+
+  ur_command_list_handler_t CCS;
+  ur_command_list_handler_t BCS;
+
+  // TODO: Make this a unique_ptr
+  ur_event_pool_t *EventPool;
+};
+
+struct ur_queue_dispatcher_t : _ur_object {
+  template <typename QType, typename... Args>
+  ur_queue_dispatcher_t(std::in_place_type_t<QType> tag, Args &&...args)
+      : Queue(tag, std::forward<Args>(args)...) {}
+
+  ur_queue_dispatcher_t(const ur_queue_dispatcher_t &) = delete;
+  ur_queue_dispatcher_t &operator=(const ur_queue_dispatcher_t &) = delete;
+
+  template <typename... Args> void enqueue(Args &&...args) {
+    std::visit([&](auto &&arg) { arg.enqueue(std::forward<Args>(args)...); },
+               Queue);
+  }
+
+  void synchronize() {
+    std::visit([](auto &&arg) { arg.synchronize(); }, Queue);
+  }
+
+  ur_device_handle_t get_device() {
+    return std::visit([](auto &&arg) { return arg.Device; }, Queue);
+  }
+
+  ur_context_handle_t get_context() {
+    return std::visit([](auto &&arg) { return arg.Context; }, Queue);
+  }
+
+private:
+  std::variant<ur_queue_immediate_in_order_t> Queue;
 };
 } // namespace v2
 
@@ -241,7 +371,6 @@ struct ur_queue_handle_legacy_t_ : _ur_object {
       bool OwnZeCommandQueue, ur_queue_flags_t Properties = 0,
       int ForceComputeIndex = -1);
 
-  using queue_type = ur_device_handle_t_::queue_group_info_t::type;
   // PI queue is in general a one to many mapping to L0 native queues.
   struct ur_queue_group_t {
     ur_queue_handle_legacy_t Queue;
@@ -714,6 +843,14 @@ struct ur_queue_handle_t_ {
     }
   }
 
+  bool is_legacy() {
+    return std::holds_alternative<ur_queue_handle_legacy_t_>(Queue);
+  }
+
+  bool is_dispatcher() {
+    return std::holds_alternative<v2::ur_queue_dispatcher_t>(Queue);
+  }
+
   std::variant<ur_queue_handle_legacy_t_, v2::ur_queue_dispatcher_t> Queue;
 };
 
@@ -729,6 +866,10 @@ template <typename QueueT> QueueT *GetQueue(ur_queue_handle_t Queue) {
 
 static inline ur_queue_handle_legacy_t Legacy(ur_queue_handle_t Queue) {
   return GetQueue<ur_queue_handle_legacy_t_>(Queue);
+}
+
+static inline v2::ur_queue_dispatcher_t *Dispatcher(ur_queue_handle_t Queue) {
+  return GetQueue<v2::ur_queue_dispatcher_t>(Queue);
 }
 
 // This helper function creates a ur_event_handle_t and associate a
