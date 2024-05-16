@@ -14,7 +14,7 @@
 #include "ur_level_zero.hpp"
 
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
-    ur_queue_handle_t Queue,   ///< [in] handle of the queue object
+    ur_queue_handle_t UrQueue, ///< [in] handle of the queue object
     ur_kernel_handle_t Kernel, ///< [in] handle of the kernel object
     uint32_t WorkDim, ///< [in] number of dimensions, from 1 to 3, to specify
                       ///< the global and work-group work-items
@@ -43,6 +43,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
         *OutEvent ///< [in,out][optional] return an event object that identifies
                   ///< this particular kernel execution instance.
 ) {
+  auto Queue = Legacy(UrQueue);
   auto ZeDevice = Queue->Device->ZeDevice;
 
   ze_kernel_handle_t ZeKernel{};
@@ -271,17 +272,17 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueCooperativeKernelLaunchExp(
-    ur_queue_handle_t hQueue, ur_kernel_handle_t hKernel, uint32_t workDim,
+    ur_queue_handle_t UrQueue, ur_kernel_handle_t hKernel, uint32_t workDim,
     const size_t *pGlobalWorkOffset, const size_t *pGlobalWorkSize,
     const size_t *pLocalWorkSize, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
-  return urEnqueueKernelLaunch(hQueue, hKernel, workDim, pGlobalWorkOffset,
+  return urEnqueueKernelLaunch(UrQueue, hKernel, workDim, pGlobalWorkOffset,
                                pGlobalWorkSize, pLocalWorkSize,
                                numEventsInWaitList, phEventWaitList, phEvent);
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableWrite(
-    ur_queue_handle_t Queue,     ///< [in] handle of the queue to submit to.
+    ur_queue_handle_t UrQueue,   ///< [in] handle of the queue to submit to.
     ur_program_handle_t Program, ///< [in] handle of the program containing the
                                  ///< device global variable.
     const char
@@ -302,6 +303,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableWrite(
         *Event ///< [in,out][optional] return an event object that identifies
                ///< this particular kernel execution instance.
 ) {
+  auto Queue = Legacy(UrQueue);
   std::scoped_lock<ur_shared_mutex> lock(Queue->Mutex);
 
   // Find global variable pointer
@@ -330,7 +332,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableWrite(
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableRead(
-    ur_queue_handle_t Queue,     ///< [in] handle of the queue to submit to.
+    ur_queue_handle_t UrQueue,   ///< [in] handle of the queue to submit to.
     ur_program_handle_t Program, ///< [in] handle of the program containing the
                                  ///< device global variable.
     const char
@@ -351,6 +353,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableRead(
         *Event ///< [in,out][optional] return an event object that identifies
                ///< this particular kernel execution instance.
 ) {
+  auto Queue = Legacy(UrQueue);
 
   std::scoped_lock<ur_shared_mutex> lock(Queue->Mutex);
 
