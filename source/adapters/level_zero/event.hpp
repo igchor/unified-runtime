@@ -251,6 +251,8 @@ struct ur_event_handle_t_ : _ur_object {
   std::optional<ur_completion_batch_it> completionBatch;
   // Keeps track of whether we are using Counter-based Events.
   bool CounterBasedEventsEnabled = false;
+
+  std::optional<v2::ur_event_t> V2Event;
 };
 
 // Helper function to implement zeHostSynchronize.

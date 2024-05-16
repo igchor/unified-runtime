@@ -18,6 +18,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 #include <ur/ur.hpp>
 #include <ur_api.h>
@@ -30,6 +31,8 @@
 extern "C" {
 ur_result_t urQueueReleaseInternal(ur_queue_handle_t Queue);
 } // extern "C"
+
+using queue_type = ur_device_handle_t_::queue_group_info_t::type;
 
 namespace v2 {
 enum class CommandListPreference { Copy, Compute };
@@ -50,8 +53,29 @@ private:
   std::variant<std::vector<ze_event_handle_t>, ze_event_handle_t *> WaitList;
 };
 
+struct ur_event_pool_t;
+
+struct ur_event_t {
+  ur_event_pool_t* EventPool;
+  ze_event_handle_t ZeEvent;
+
+  ~ur_event_t();
+};
+
+struct ur_event_pool_t {
+  ur_event_pool_t(ze_context_handle_t ZeContext, ze_device_handle_t ZeDevice, size_t Capacity);
+  ur_event_t getEvent();
+  void addEvent(ur_event_t Event);
+
+private:
+  uint32_t Capacity;
+  ze_event_pool_handle_t EventPool;
+  std::deque<ze_event_handle_t> Events;
+};
+
 struct ur_queue_immediate_in_order_t {
-  ur_queue_immediate_in_order_t();
+  ur_queue_immediate_in_order_t(ur_context_handle_t Context,
+                                ur_device_handle_t Device);
 
   template <typename F>
   [[nodiscard]] ur_result_t
@@ -73,8 +97,10 @@ struct ur_queue_immediate_in_order_t {
 private:
   ur_command_list_handler_t *
   getCommandListHandler(CommandListPreference Preference);
+
   ze_event_handle_t getSignalEvent(ur_command_list_handler_t *handler,
                                    ur_event_handle_t *hUserEvent);
+
   ur_wait_list_t getWaitList(ur_command_list_handler_t *handler,
                              uint32_t numWaitEvents,
                              const ur_event_handle_t *phWaitEvents);
@@ -85,6 +111,11 @@ private:
 
   ur_command_list_handler_t CCS;
   ur_command_list_handler_t BCS;
+
+  ur_context_handle_t Context;
+  ur_device_handle_t Device;
+
+  ur_event_pool_t EventPool;
 };
 
 struct ur_queue_dispatcher_t {
@@ -306,7 +337,6 @@ struct ur_queue_handle_t_ : _ur_object {
                      bool OwnZeCommandQueue, ur_queue_flags_t Properties = 0,
                      int ForceComputeIndex = -1);
 
-  using queue_type = ur_device_handle_t_::queue_group_info_t::type;
   // PI queue is in general a one to many mapping to L0 native queues.
   struct ur_queue_group_t {
     ur_queue_handle_t Queue;

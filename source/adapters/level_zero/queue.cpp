@@ -14,6 +14,7 @@
 #include <optional>
 #include <string.h>
 #include <vector>
+#include <numeric>
 
 #include "adapter.hpp"
 #include "common.hpp"
@@ -25,6 +26,60 @@
 #include "ze_api.h"
 
 namespace v2 {
+
+// TODO: env
+static constexpr size_t EventsPerPool = 1024;
+
+ur_event_pool_t::ur_event_pool_t(ze_context_handle_t ZeContext, ze_device_handle_t ZeDevice, size_t Capacity): Capacity(Capacity), Events(Capacity) {
+    ze_event_pool_counter_based_exp_desc_t counterBasedExt = {
+        ZE_STRUCTURE_TYPE_COUNTER_BASED_EVENT_POOL_EXP_DESC};
+    ZeStruct<ze_event_pool_desc_t> ZeEventPoolDesc;
+    ZeEventPoolDesc.count = EventsPerPool;
+    ZeEventPoolDesc.flags = 0;
+    ZeEventPoolDesc.pNext = nullptr;
+    // TODO
+    // if (HostVisible)
+    //   ZeEventPoolDesc.flags |= ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
+    // if (ProfilingEnabled)
+    //   ZeEventPoolDesc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
+    logger::debug("ze_event_pool_desc_t flags set to: {}",
+                  ZeEventPoolDesc.flags);
+    counterBasedExt.flags = ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_IMMEDIATE;
+    ZeEventPoolDesc.pNext = &counterBasedExt;
+
+    // TODO: get event pools from contex cache and return in destructor
+    ze_event_pool_handle_t ZePool;
+    ZE2UR_CALL_THROWS(zeEventPoolCreate, (ZeContext, &ZeEventPoolDesc,
+                                   1, &ZeDevice, &ZePool));
+
+  for (uint32_t i = 0; i < Capacity; i++) {
+    ZeStruct<ze_event_desc_t> ZeEventDesc;
+    ZeEventDesc.index = i;
+    ZeEventDesc.wait = 0;
+    ZeEventDesc.signal = ZE_EVENT_SCOPE_FLAG_HOST;
+
+    ZE2UR_CALL_THROWS(zeEventCreate, (EventPool, &ZeEventDesc, &Events[i]));
+  }
+}
+
+ur_event_t::~ur_event_t() {
+  EventPool->addEvent(*this);
+}
+
+ur_event_t ur_event_pool_t::getEvent() {
+  if (Events.empty()) {
+    return {this, nullptr};
+  }
+
+  auto Event = ur_event_t{this, Events.back()};
+  Events.pop_back();
+  return Event;
+}
+
+void ur_event_pool_t::addEvent(ur_event_t Event) {
+  Events.push_back(Event.ZeEvent);
+}
+
 ur_wait_list_t::ur_wait_list_t(const ur_event_handle_t *phWaitEvents,
                                uint32_t numWaitEvents,
                                ze_event_handle_t *pExtraZeEvent) {
@@ -57,11 +112,35 @@ std::pair<ze_event_handle_t *, uint32_t> ur_wait_list_t::getView() {
     return {vec.data(), vec.size()};
   }
 }
-ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t() {
-  // TODO:
-  // - get EventPool from Context cache (or use zeEventCreate without pool
-  // once available)
-  // - get CommandList(s) from Context cache
+
+static ze_command_list_handle_t createOrGetZeCommandList(uint32_t Ordinal, ur_context_handle_t Context,
+                                                             ur_device_handle_t Device) {
+  ZeStruct<ze_command_queue_desc_t> QueueDesc;
+  QueueDesc.ordinal = Ordinal;
+  QueueDesc.mode = ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS;
+  QueueDesc.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL; // TODO
+  QueueDesc.flags = ZE_COMMAND_QUEUE_FLAG_IN_ORDER;
+
+  v2::immediate_command_list_descriptor_t Desc;
+  Desc.Device = Device->ZeDevice;
+  Desc.QueueDesc = QueueDesc;
+
+  auto ZeCommandList = Context->V2CommandListCache.getCommandList(Desc);
+  if (ZeCommandList)
+    return ZeCommandList;
+
+  ZE2UR_CALL_THROWS(zeCommandListCreateImmediate, (Context->ZeContext, Device->ZeDevice,
+                                   &QueueDesc, &ZeCommandList));
+  return ZeCommandList;
+}
+
+ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t(ur_context_handle_t Context,
+                                                             ur_device_handle_t Device)
+    : Context(Context), Device(Device), EventPool(Context->ZeContext, Device->ZeDevice, EventsPerPool) {
+  CCS.CommandList = createOrGetZeCommandList(Device->QueueGroup[queue_type::Compute].ZeOrdinal, Context, Device);
+  if (Device->QueueGroup[queue_type::MainCopy].ZeOrdinal) {
+    BCS.CommandList = createOrGetZeCommandList(Device->QueueGroup[queue_type::MainCopy].ZeOrdinal, Context, Device);
+  }
 }
 
 ur_command_list_handler_t *ur_queue_immediate_in_order_t::getCommandListHandler(
@@ -79,7 +158,12 @@ ze_event_handle_t ur_queue_immediate_in_order_t::getSignalEvent(
     return handler->Event;
   }
 
-  // TODO
+  auto UrEvent = EventPool.getEvent();
+
+  *hUserEvent = new ur_event_handle_t_(UrEvent.ZeEvent, nullptr, Context, UR_EXT_COMMAND_TYPE_USER, false);
+  (*hUserEvent)->V2Event = UrEvent;
+
+  return UrEvent.ZeEvent;
 }
 
 ur_wait_list_t ur_queue_immediate_in_order_t::getWaitList(
@@ -576,7 +660,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
       *Queue = new ur_queue_handle_t_(ZeComputeCommandQueues,
                                       ZeCopyCommandQueues, Context, Device,
                                       true, Flags, ForceComputeIndex);
-      (*Queue)->V2QueueDispatcher.emplace(v2::ur_queue_immediate_in_order_t{});
+      (*Queue)->V2QueueDispatcher.emplace(v2::ur_queue_immediate_in_order_t(Context, Device));
       return UR_RESULT_SUCCESS;
     } catch (const std::bad_alloc &) {
       return UR_RESULT_ERROR_OUT_OF_HOST_MEMORY;
@@ -590,7 +674,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
   // Create placeholder queues in the compute queue group.
   // Actual L0 queues will be created at first use.
   std::vector<ze_command_queue_handle_t> ZeComputeCommandQueues(
-      Device->QueueGroup[ur_queue_handle_t_::queue_type::Compute]
+      Device->QueueGroup[queue_type::Compute]
           .ZeProperties.numQueues,
       nullptr);
 
@@ -600,12 +684,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
   size_t NumCopyGroups = 0;
   if (Device->hasMainCopyEngine()) {
     NumCopyGroups +=
-        Device->QueueGroup[ur_queue_handle_t_::queue_type::MainCopy]
+        Device->QueueGroup[queue_type::MainCopy]
             .ZeProperties.numQueues;
   }
   if (Device->hasLinkCopyEngine()) {
     NumCopyGroups +=
-        Device->QueueGroup[ur_queue_handle_t_::queue_type::LinkCopy]
+        Device->QueueGroup[queue_type::LinkCopy]
             .ZeProperties.numQueues;
   }
   std::vector<ze_command_queue_handle_t> ZeCopyCommandQueues(NumCopyGroups,

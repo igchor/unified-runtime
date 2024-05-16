@@ -300,7 +300,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueEventsWaitWithBarrier(
        {Queue->ComputeQueueGroupsByTID, Queue->CopyQueueGroupsByTID})
     for (auto &QueueGroup : QueueMap) {
       bool UseCopyEngine =
-          QueueGroup.second.Type != ur_queue_handle_t_::queue_type::Compute;
+          QueueGroup.second.Type != queue_type::Compute;
       if (Queue->UsingImmCmdLists) {
         // If immediate command lists are being used, each will act as their own
         // queue, so we must insert a barrier into each.
