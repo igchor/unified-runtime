@@ -759,12 +759,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urBindlessImagesSampledImageCreateExp(
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urBindlessImagesImageCopyExp(
-    ur_queue_handle_t hQueue, void *pDst, void *pSrc,
+    ur_queue_handle_t UrQueue, void *pDst, void *pSrc,
     const ur_image_format_t *pImageFormat, const ur_image_desc_t *pImageDesc,
     ur_exp_image_copy_flags_t imageCopyFlags, ur_rect_offset_t srcOffset,
     ur_rect_offset_t dstOffset, ur_rect_region_t copyExtent,
     ur_rect_region_t hostExtent, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
+  auto hQueue = Legacy(UrQueue);
   std::scoped_lock<ur_shared_mutex> Lock(hQueue->Mutex);
 
   UR_ASSERT(hQueue, UR_RESULT_ERROR_INVALID_NULL_HANDLE);
@@ -1014,9 +1015,10 @@ UR_APIEXPORT ur_result_t UR_APICALL urBindlessImagesDestroyExternalSemaphoreExp(
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urBindlessImagesWaitExternalSemaphoreExp(
-    ur_queue_handle_t hQueue, ur_exp_interop_semaphore_handle_t hSemaphore,
+    ur_queue_handle_t UrQueue, ur_exp_interop_semaphore_handle_t hSemaphore,
     uint32_t numEventsInWaitList, const ur_event_handle_t *phEventWaitList,
     ur_event_handle_t *phEvent) {
+  auto hQueue = Legacy(UrQueue);
   std::ignore = hQueue;
   std::ignore = hSemaphore;
   std::ignore = numEventsInWaitList;
@@ -1028,9 +1030,10 @@ UR_APIEXPORT ur_result_t UR_APICALL urBindlessImagesWaitExternalSemaphoreExp(
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urBindlessImagesSignalExternalSemaphoreExp(
-    ur_queue_handle_t hQueue, ur_exp_interop_semaphore_handle_t hSemaphore,
+    ur_queue_handle_t UrQueue, ur_exp_interop_semaphore_handle_t hSemaphore,
     uint32_t numEventsInWaitList, const ur_event_handle_t *phEventWaitList,
     ur_event_handle_t *phEvent) {
+  auto hQueue = Legacy(UrQueue);
   std::ignore = hQueue;
   std::ignore = hSemaphore;
   std::ignore = numEventsInWaitList;
