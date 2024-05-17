@@ -76,7 +76,12 @@ struct ur_context_handle_t_ : _ur_object {
   ur_context_handle_t_(ze_context_handle_t ZeContext, uint32_t NumDevices,
                        const ur_device_handle_t *Devs, bool OwnZeContext)
       : ZeContext{ZeContext}, Devices{Devs, Devs + NumDevices},
-        NumDevices{NumDevices} {
+        NumDevices{NumDevices}, V2EventPool(NumDevices) {
+    std::cout << "CTOR" << std::endl;
+    for (int i = 0; i < NumDevices; i++) {
+      V2EventPool[Devs[i]->ZeDevice] = std::make_unique<v2::ur_event_pool_t>(ZeContext, Devs[i]->ZeDevice, 256);
+    }
+
     OwnNativeHandle = OwnZeContext;
   }
 
@@ -142,6 +147,9 @@ struct ur_context_handle_t_ : _ur_object {
   // TODO: this should replace the above 2 unordered_maps. To do this
   // we need to get rid of ForcedCmdQueue from getAvailableCommandList
   v2::command_list_cache V2CommandListCache;
+
+  // TODO: Create abstraction for this (and change unordered_map to vector - index each device in the context by integer)
+  std::unordered_map<ze_device_handle_t, std::unique_ptr<v2::ur_event_pool_t>> V2EventPool;
 
   // Store USM pool for USM shared and device allocations. There is 1 memory
   // pool per each pair of (context, device) per each memory type.

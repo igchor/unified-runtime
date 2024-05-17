@@ -53,6 +53,8 @@ private:
   std::variant<std::vector<ze_event_handle_t>, ze_event_handle_t *, std::monostate> WaitList;
 };
 
+// TODO: move this to Context.hpp
+//////////////////////////////
 struct ur_event_pool_t;
 
 struct ur_event_t {
@@ -65,17 +67,20 @@ struct ur_event_t {
 struct ur_event_pool_t {
   ur_event_pool_t(ze_context_handle_t ZeContext, ze_device_handle_t ZeDevice, size_t Capacity);
   ur_event_t getEvent();
-  void addEvent(ur_event_t Event);
+  void addEvent(ur_event_t &Event);
 
 private:
   uint32_t Capacity;
   ze_event_pool_handle_t EventPool;
   std::deque<ze_event_handle_t> Events;
 };
+//////////////////////////////
 
 struct ur_queue_immediate_in_order_t {
   ur_queue_immediate_in_order_t(ur_context_handle_t Context,
                                 ur_device_handle_t Device);
+
+  ~ur_queue_immediate_in_order_t();
 
   template <typename F>
   [[nodiscard]] ur_result_t
@@ -115,7 +120,8 @@ private:
   ur_context_handle_t Context;
   ur_device_handle_t Device;
 
-  ur_event_pool_t EventPool;
+  // TODO: Make this a unique_ptr
+  ur_event_pool_t* EventPool;
 };
 
 struct ur_queue_dispatcher_t {
