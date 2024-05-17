@@ -175,6 +175,21 @@ ur_result_t calculateKernelWorkDimensions(
                 GlobalWorkOffset[2]));
   }
 
+  // TODO: move this to SetPendingArgs
+   // If there are any pending arguments set them now.
+  for (auto &Arg : Kernel->PendingArguments) {
+    // The ArgValue may be a NULL pointer in which case a NULL value is used for
+    // the kernel argument declared as a pointer to global or constant memory.
+    char **ZeHandlePtr = nullptr;
+    if (Arg.Value) {
+      UR_CALL(Arg.Value->getZeHandlePtr(ZeHandlePtr, Arg.AccessMode,
+                                        Queue->Device));
+    }
+    ZE2UR_CALL(zeKernelSetArgumentValue,
+               (ZeKernel, Arg.Index, Arg.Size, ZeHandlePtr));
+  }
+  Kernel->PendingArguments.clear();
+
   ze_group_count_t ZeThreadGroupDimensions{1, 1, 1};
   uint32_t WG[3];
 

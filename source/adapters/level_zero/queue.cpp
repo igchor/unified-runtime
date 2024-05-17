@@ -28,7 +28,7 @@
 namespace v2 {
 
 // TODO: env
-static constexpr size_t EventsPerPool = 1024;
+static constexpr size_t EventsPerPool = 256;
 
 ur_event_pool_t::ur_event_pool_t(ze_context_handle_t ZeContext, ze_device_handle_t ZeDevice, size_t Capacity): Capacity(Capacity), Events(Capacity) {
     ze_event_pool_counter_based_exp_desc_t counterBasedExt = {
@@ -36,10 +36,9 @@ ur_event_pool_t::ur_event_pool_t(ze_context_handle_t ZeContext, ze_device_handle
     ZeStruct<ze_event_pool_desc_t> ZeEventPoolDesc;
     ZeEventPoolDesc.count = EventsPerPool;
     ZeEventPoolDesc.flags = 0;
-    ZeEventPoolDesc.pNext = nullptr;
     // TODO
     // if (HostVisible)
-    //   ZeEventPoolDesc.flags |= ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
+    ZeEventPoolDesc.flags |= ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
     // if (ProfilingEnabled)
     //   ZeEventPoolDesc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
     logger::debug("ze_event_pool_desc_t flags set to: {}",
@@ -58,12 +57,12 @@ ur_event_pool_t::ur_event_pool_t(ze_context_handle_t ZeContext, ze_device_handle
     ZeEventDesc.wait = 0;
     ZeEventDesc.signal = ZE_EVENT_SCOPE_FLAG_HOST;
 
-    ZE2UR_CALL_THROWS(zeEventCreate, (EventPool, &ZeEventDesc, &Events[i]));
+    ZE2UR_CALL_THROWS(zeEventCreate, (ZePool, &ZeEventDesc, &Events[i]));
   }
 }
 
 ur_event_t::~ur_event_t() {
-  EventPool->addEvent(*this);
+  // EventPool->addEvent(*this);
 }
 
 ur_event_t ur_event_pool_t::getEvent() {
@@ -99,17 +98,20 @@ ur_wait_list_t::ur_wait_list_t(const ur_event_handle_t *phWaitEvents,
     WaitList = std::move(WaitListVec);
   } else if (numWaitEvents == 1) {
     WaitList = &phWaitEvents[0]->ZeEvent;
-  } else { // pExtraZeEvent != nullptr
+  } else if (pExtraZeEvent != nullptr) {
     WaitList = pExtraZeEvent;
+  } else { // no events
+    WaitList = std::monostate{};
   }
 }
 
 std::pair<ze_event_handle_t *, uint32_t> ur_wait_list_t::getView() {
   if (auto singleEvent = std::get_if<ze_event_handle_t *>(&WaitList)) {
     return {*singleEvent, 1};
+  } else if(auto waitList = std::get_if<std::vector<ze_event_handle_t>>(&WaitList)) {
+    return {waitList->data(), waitList->size()};
   } else {
-    auto &vec = std::get<std::vector<ze_event_handle_t>>(WaitList);
-    return {vec.data(), vec.size()};
+    return {nullptr, 0};
   }
 }
 
@@ -138,8 +140,11 @@ ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t(ur_context_handle_t
                                                              ur_device_handle_t Device)
     : Context(Context), Device(Device), EventPool(Context->ZeContext, Device->ZeDevice, EventsPerPool) {
   CCS.CommandList = createOrGetZeCommandList(Device->QueueGroup[queue_type::Compute].ZeOrdinal, Context, Device);
+  CCS.Event = EventPool.getEvent().ZeEvent;
+
   if (Device->QueueGroup[queue_type::MainCopy].ZeOrdinal) {
     BCS.CommandList = createOrGetZeCommandList(Device->QueueGroup[queue_type::MainCopy].ZeOrdinal, Context, Device);
+    BCS.Event = EventPool.getEvent().ZeEvent;
   }
 }
 
@@ -169,7 +174,7 @@ ze_event_handle_t ur_queue_immediate_in_order_t::getSignalEvent(
 ur_wait_list_t ur_queue_immediate_in_order_t::getWaitList(
     ur_command_list_handler_t *handler, uint32_t numWaitEvents,
     const ur_event_handle_t *phWaitEvents) {
-  auto ExtraWaitEvent = handler != LastHandler ? &LastHandler->Event : nullptr;
+  auto ExtraWaitEvent = (LastHandler && handler != LastHandler) ? &LastHandler->Event : nullptr;
   return ur_wait_list_t(phWaitEvents, numWaitEvents, ExtraWaitEvent);
 }
 } // namespace v2

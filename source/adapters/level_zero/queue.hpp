@@ -50,7 +50,7 @@ struct ur_wait_list_t {
   std::pair<ze_event_handle_t *, uint32_t> getView();
 
 private:
-  std::variant<std::vector<ze_event_handle_t>, ze_event_handle_t *> WaitList;
+  std::variant<std::vector<ze_event_handle_t>, ze_event_handle_t *, std::monostate> WaitList;
 };
 
 struct ur_event_pool_t;
