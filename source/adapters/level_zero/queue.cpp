@@ -975,6 +975,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreateWithNativeHandle(
 UR_APIEXPORT ur_result_t UR_APICALL urQueueFinish(
     ur_queue_handle_t UrQueue ///< [in] handle of the queue to be finished.
 ) {
+  if (UrQueue->V2QueueDispatcher.has_value()) {
+    UrQueue->V2QueueDispatcher.value().synchronize();
+    return UR_RESULT_SUCCESS;
+  }
+
   if (UrQueue->UsingImmCmdLists) {
     // Lock automatically releases when this goes out of scope.
     std::scoped_lock<ur_shared_mutex> Lock(UrQueue->Mutex);

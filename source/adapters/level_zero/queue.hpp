@@ -99,6 +99,13 @@ struct ur_queue_immediate_in_order_t {
                             ZeWaitEvents);
   }
 
+  void synchronize() {
+      if (!LastHandler)
+        return;
+
+      ZE2UR_CALL_THROWS(zeEventHostSynchronize, (LastHandler->Event, UINT64_MAX));
+  }
+
 private:
   ur_command_list_handler_t *
   getCommandListHandler(CommandListPreference Preference);
@@ -134,6 +141,14 @@ struct ur_queue_dispatcher_t {
   [[nodiscard]] ur_result_t enqueue(Args &&...args) {
     if (auto Imm = std::get_if<ur_queue_immediate_in_order_t>(&Queue)) {
       return Imm->enqueue(std::forward<Args>(args)...);
+    } else {
+      assert(0);
+    }
+  }
+
+  void synchronize() {
+    if (auto Imm = std::get_if<ur_queue_immediate_in_order_t>(&Queue)) {
+      return Imm->synchronize();
     } else {
       assert(0);
     }
