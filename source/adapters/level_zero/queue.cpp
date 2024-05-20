@@ -742,6 +742,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueRetain(
 UR_APIEXPORT ur_result_t UR_APICALL urQueueRelease(
     ur_queue_handle_t UrQueue ///< [in] handle of the queue object to release
 ) {
+  if (UrQueue->is_dispatcher()) {
+    if ((Dispatcher(UrQueue)->RefCount.decrementAndTest())) {
+	 delete UrQueue;
+    }
+    return UR_RESULT_SUCCESS;
+  }
+
   auto Queue = Legacy(UrQueue);
 
   std::vector<ur_event_handle_t> EventListToCleanup;
