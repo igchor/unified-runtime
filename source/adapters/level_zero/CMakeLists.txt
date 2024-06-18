@@ -112,6 +112,7 @@ add_ur_adapter(${TARGET_NAME}
     ${CMAKE_CURRENT_SOURCE_DIR}/program.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/queue.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sampler.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/v2/queue_immediate_in_order.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ur_level_zero.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/context.cpp

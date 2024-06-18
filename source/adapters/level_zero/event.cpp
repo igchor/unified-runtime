@@ -1054,7 +1054,7 @@ ur_result_t urEventReleaseInternal(ur_event_handle_t Event) {
   // associated ur_event_handle_t is released. Here we have to decrement it so
   // ur_queue_handle_t can be released successfully.
   if (Event->UrQueue) {
-    UR_CALL(urQueueReleaseInternal(Event->UrQueue));
+    UR_CALL(urQueueReleaseInternal(Legacy(Event->UrQueue)));
   }
 
   return UR_RESULT_SUCCESS;

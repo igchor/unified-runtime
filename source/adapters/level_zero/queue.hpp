@@ -31,14 +31,8 @@ struct ur_queue_handle_legacy_t_;
 using ur_queue_handle_legacy_t = ur_queue_handle_legacy_t_ *;
 
 extern "C" {
-ur_result_t urQueueReleaseInternal(ur_queue_handle_t Queue);
+ur_result_t urQueueReleaseInternal(ur_queue_handle_legacy_t Queue);
 } // extern "C"
-
-namespace v2 {
-struct ur_queue_dispatcher_t {
-  // TODO
-};
-} // namespace v2
 
 struct ur_completion_batch;
 using ur_completion_batch_list = std::list<ur_completion_batch>;
@@ -233,13 +227,26 @@ using ur_command_list_map_t =
 // The iterator pointing to a specific command-list in use.
 using ur_command_list_ptr_t = ur_command_list_map_t::iterator;
 
-struct ur_queue_handle_legacy_t_ : _ur_object {
+struct ur_queue_handle_t_ {
+  virtual ~ur_queue_handle_t_();
+  virtual ur_result_t getNativeHandle(ur_queue_native_desc_t *,
+                                      ur_native_handle_t *) = 0;
+  virtual ur_result_t retain() = 0;
+  virtual ur_result_t release() = 0;
+};
+
+struct ur_queue_handle_legacy_t_ : _ur_object, public ur_queue_handle_t_ {
   ur_queue_handle_legacy_t_(
       std::vector<ze_command_queue_handle_t> &ComputeQueues,
       std::vector<ze_command_queue_handle_t> &CopyQueues,
       ur_context_handle_t Context, ur_device_handle_t Device,
       bool OwnZeCommandQueue, ur_queue_flags_t Properties = 0,
       int ForceComputeIndex = -1);
+
+  ur_result_t getNativeHandle(ur_queue_native_desc_t *,
+                              ur_native_handle_t *) override;
+  ur_result_t retain() override;
+  ur_result_t release() override;
 
   using queue_type = ur_device_handle_t_::queue_group_info_t::type;
   // PI queue is in general a one to many mapping to L0 native queues.
@@ -699,28 +706,12 @@ struct ur_queue_handle_legacy_t_ : _ur_object {
 
   // Threshold for cleaning up the EventList for immediate command lists.
   size_t getImmdCmmdListsEventCleanupThreshold();
-
-  // Pointer to the unified handle.
-  ur_queue_handle_t_ *UnifiedHandle;
 };
 
-// Unified handle that represents either legacy Queue or new dispatcher.
-struct ur_queue_handle_t_ {
-  template <typename QType, typename... Args>
-  ur_queue_handle_t_(std::in_place_type_t<QType> tag, Args &&...args)
-      : Queue(tag, std::forward<Args>(args)...) {
-    if constexpr (std::is_same_v<QType, ur_queue_handle_legacy_t_>) {
-      std::get<ur_queue_handle_legacy_t_>(Queue).UnifiedHandle = this;
-    }
-  }
-
-  std::variant<ur_queue_handle_legacy_t_, v2::ur_queue_dispatcher_t> Queue;
-};
-
-template <typename QueueT> QueueT *GetQueue(ur_queue_handle_t Queue) {
+template <typename QueueT> QueueT GetQueue(ur_queue_handle_t Queue) {
   if (!Queue)
     return nullptr;
-  auto *Q = std::get_if<QueueT>(&Queue->Queue);
+  auto *Q = dynamic_cast<QueueT>(Queue);
   if (!Q) {
     throw UR_RESULT_ERROR_INVALID_QUEUE;
   }
@@ -728,7 +719,7 @@ template <typename QueueT> QueueT *GetQueue(ur_queue_handle_t Queue) {
 }
 
 static inline ur_queue_handle_legacy_t Legacy(ur_queue_handle_t Queue) {
-  return GetQueue<ur_queue_handle_legacy_t_>(Queue);
+  return GetQueue<ur_queue_handle_legacy_t>(Queue);
 }
 
 // This helper function creates a ur_event_handle_t and associate a
