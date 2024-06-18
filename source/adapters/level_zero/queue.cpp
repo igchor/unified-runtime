@@ -504,6 +504,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
 
   UR_ASSERT(Context->isValidDevice(Device), UR_RESULT_ERROR_INVALID_DEVICE);
 
+  // optimized path for immediate, in-order command lists
+  if (v2::shouldUseDispatcher(Flags, Device)) {
+    *Queue = new ur_queue_handle_t_(
+        std::in_place_type<v2::ur_queue_dispatcher_t>, Context, Device, Flags);
+    return UR_RESULT_SUCCESS;
+  }
+
   // Create placeholder queues in the compute queue group.
   // Actual L0 queues will be created at first use.
   std::vector<ze_command_queue_handle_t> ZeComputeCommandQueues(
@@ -584,6 +591,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
 UR_APIEXPORT ur_result_t UR_APICALL urQueueRetain(
     ur_queue_handle_t UrQueue ///< [in] handle of the queue object to get access
 ) {
+  V2TryDispatch(UrQueue, retain());
+
   auto Queue = Legacy(UrQueue);
   {
     std::scoped_lock<ur_shared_mutex> Lock(Queue->Mutex);
@@ -596,6 +605,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueRetain(
 UR_APIEXPORT ur_result_t UR_APICALL urQueueRelease(
     ur_queue_handle_t UrQueue ///< [in] handle of the queue object to release
 ) {
+  V2TryDispatch(UrQueue, release());
+
   auto Queue = Legacy(UrQueue);
 
   std::vector<ur_event_handle_t> EventListToCleanup;

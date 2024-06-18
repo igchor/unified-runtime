@@ -24,6 +24,8 @@
 #include <ze_api.h>
 #include <zes_api.h>
 
+#include "v2/queue_dispatcher.hpp"
+
 #include "common.hpp"
 #include "device.hpp"
 
@@ -33,12 +35,6 @@ using ur_queue_handle_legacy_t = ur_queue_handle_legacy_t_ *;
 extern "C" {
 ur_result_t urQueueReleaseInternal(ur_queue_handle_t Queue);
 } // extern "C"
-
-namespace v2 {
-struct ur_queue_dispatcher_t {
-  // TODO
-};
-} // namespace v2
 
 struct ur_completion_batch;
 using ur_completion_batch_list = std::list<ur_completion_batch>;
