@@ -346,8 +346,7 @@ ur_result_t resetCommandLists(ur_queue_handle_legacy_t Queue) {
 
 ur_queue_handle_t_::~ur_queue_handle_t_() {}
 
-UR_APIEXPORT ur_result_t UR_APICALL urQueueGetInfo(
-    ur_queue_handle_t UrQueue, ///< [in] handle of the queue object
+ur_result_t ur_queue_handle_legacy_t_::queueGetInfo(
     ur_queue_info_t ParamName, ///< [in] name of the queue property to query
     size_t ParamValueSize, ///< [in] size in bytes of the queue property value
                            ///< provided
@@ -355,7 +354,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueGetInfo(
     size_t *ParamValueSizeRet ///< [out] size in bytes returned in queue
                               ///< property value
 ) {
-  auto Queue = Legacy(UrQueue);
+  auto Queue = this;
 
   std::shared_lock<ur_shared_mutex> Lock(Queue->Mutex);
   UrReturnHelper ReturnValue(ParamValueSize, ParamValue, ParamValueSizeRet);
@@ -591,7 +590,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreate(
   return UR_RESULT_SUCCESS;
 }
 
-ur_result_t ur_queue_handle_legacy_t_::retain() {
+ur_result_t ur_queue_handle_legacy_t_::queueRetain() {
   auto Queue = this;
 
   {
@@ -602,13 +601,7 @@ ur_result_t ur_queue_handle_legacy_t_::retain() {
   return UR_RESULT_SUCCESS;
 }
 
-UR_APIEXPORT ur_result_t UR_APICALL urQueueRetain(
-    ur_queue_handle_t UrQueue ///< [in] handle of the queue object to get access
-) {
-  return UrQueue->retain();
-}
-
-ur_result_t ur_queue_handle_legacy_t_::release() {
+ur_result_t ur_queue_handle_legacy_t_::queueRelease() {
   auto Queue = this;
 
   std::vector<ur_event_handle_t> EventListToCleanup;
@@ -704,13 +697,7 @@ ur_result_t ur_queue_handle_legacy_t_::release() {
   return UR_RESULT_SUCCESS;
 }
 
-UR_APIEXPORT ur_result_t UR_APICALL urQueueRelease(
-    ur_queue_handle_t UrQueue ///< [in] handle of the queue object to release
-) {
-  return UrQueue->release();
-}
-
-ur_result_t ur_queue_handle_legacy_t_::getNativeHandle(
+ur_result_t ur_queue_handle_legacy_t_::queueGetNativeHandle(
     ur_queue_native_desc_t *Desc,
     ur_native_handle_t
         *NativeQueue ///< [out] a pointer to the native handle of the queue.
@@ -746,15 +733,6 @@ ur_result_t ur_queue_handle_legacy_t_::getNativeHandle(
     *(reinterpret_cast<int32_t *>((Desc->pNativeData))) = NativeHandleDesc;
 
   return UR_RESULT_SUCCESS;
-}
-
-UR_APIEXPORT ur_result_t UR_APICALL urQueueGetNativeHandle(
-    ur_queue_handle_t UrQueue, ///< [in] handle of the queue.
-    ur_queue_native_desc_t *Desc,
-    ur_native_handle_t
-        *NativeQueue ///< [out] a pointer to the native handle of the queue.
-) {
-  return UrQueue->getNativeHandle(Desc, NativeQueue);
 }
 
 void ur_queue_handle_legacy_t_::ur_queue_group_t::setImmCmdList(
@@ -865,10 +843,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueCreateWithNativeHandle(
   return UR_RESULT_SUCCESS;
 }
 
-UR_APIEXPORT ur_result_t UR_APICALL urQueueFinish(
-    ur_queue_handle_t UrQueue ///< [in] handle of the queue to be finished.
-) {
-  auto Queue = Legacy(UrQueue);
+ur_result_t ur_queue_handle_legacy_t_::queueFinish() {
+  auto Queue = this;
   if (Queue->UsingImmCmdLists) {
     // Lock automatically releases when this goes out of scope.
     std::scoped_lock<ur_shared_mutex> Lock(Queue->Mutex);
@@ -933,10 +909,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urQueueFinish(
   return UR_RESULT_SUCCESS;
 }
 
-UR_APIEXPORT ur_result_t UR_APICALL urQueueFlush(
-    ur_queue_handle_t UrQueue ///< [in] handle of the queue to be flushed.
-) {
-  auto Queue = Legacy(UrQueue);
+ur_result_t ur_queue_handle_legacy_t_::queueFlush() {
+  auto Queue = this;
   std::scoped_lock<ur_shared_mutex> Lock(Queue->Mutex);
   return Queue->executeAllOpenCommandLists();
 }

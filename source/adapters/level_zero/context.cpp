@@ -709,7 +709,7 @@ ur_result_t ur_context_handle_t_::getAvailableCommandList(
   // the command lists, and later are then added to the command queue.
   // Each command list is paired with an associated fence to track when the
   // command list is available for reuse.
-  ur_result_t ur_result = UR_RESULT_ERROR_OUT_OF_RESOURCES;
+  ur_result_t ur_result_t = UR_RESULT_ERROR_OUT_OF_RESOURCES;
 
   // Initally, we need to check if a command list has already been created
   // on this device that is available for use. If so, then reuse that
@@ -812,9 +812,9 @@ ur_result_t ur_context_handle_t_::getAvailableCommandList(
 
   // If there are no available command lists nor signalled command lists,
   // then we must create another command list.
-  ur_result = Queue->createCommandList(UseCopyEngine, CommandList);
+  ur_result_t = Queue->createCommandList(UseCopyEngine, CommandList);
   CommandList->second.ZeFenceInUse = true;
-  return ur_result;
+  return ur_result_t;
 }
 
 bool ur_context_handle_t_::isValidDevice(ur_device_handle_t Device) const {

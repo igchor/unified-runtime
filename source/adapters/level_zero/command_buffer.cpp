@@ -1174,7 +1174,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urCommandBufferAppendUSMFillExp(
       SyncPoint);
 }
 
-UR_APIEXPORT ur_result_t UR_APICALL urCommandBufferEnqueueExp(
+UR_APIEXPORT ur_result_t urCommandBufferEnqueueExp(
     ur_exp_command_buffer_handle_t CommandBuffer, ur_queue_handle_t UrQueue,
     uint32_t NumEventsInWaitList, const ur_event_handle_t *EventWaitList,
     ur_event_handle_t *Event) {
