@@ -10,9 +10,116 @@
 
 #include "queue_immediate_in_order.hpp"
 
+#include <mutex>
+
+#include "logger/ur_logger.hpp"
+#include "platform.hpp"
+
 namespace v2 {
+typedef ze_result_t(ZE_APICALL *zexCounterBasedEventCreateFnType)(
+    ze_context_handle_t hContext, ze_device_handle_t hDevice,
+    uint64_t *deviceAddress, uint64_t *hostAddress, uint64_t completionValue,
+    const ze_event_desc_t *desc, ze_event_handle_t *phEvent);
+
+zexCounterBasedEventCreateFnType zexCounterBasedEventCreateFn = nullptr;
+
+ur_command_list_handler_t::ur_command_list_handler_t(
+    raii::ze_command_list_t CommandList, ze_event_handle_t LastEvent)
+    : CommandList(std::move(CommandList)), LastEvent(LastEvent) {}
+
+ur_counter_based_event_pool_t::ur_counter_based_event_pool_t(
+    ze_driver_handle_t Driver, ze_context_handle_t Context,
+    ze_device_handle_t Device, size_t Size)
+    : Context(Context), Device(Device), Size(Size) {
+  // TODO: fill device/host_mem_alloc_desc_t
+
+  // static std::once_flag InitFlag;
+  // std::call_once(InitFlag, [&]() {
+  //   auto Result = zeDriverGetExtensionFunctionAddress(
+  //       Driver, "zexCounterBasedEventCreateFn",
+  //       reinterpret_cast<void **>(&zexCounterBasedEventCreateFn));
+  //   if (Result != ZE_RESULT_SUCCESS) {
+  //     logger::error(
+  //         "zeDriverGetExtensionFunctionAddress zexCounterBasedEventCreateFn "
+  //         "failed, err = {}",
+  //         Result);
+  //     throw UR_RESULT_ERROR_INVALID_OPERATION;
+  //   }
+  // });
+
+  // void *HostPtr;
+  // ZE2UR_CALL_THROWS(zeMemAllocHost, (Context, NULL, Size * sizeof(uint64_t),
+  //                                    sizeof(uint64_t), &HostPtr));
+  // HostMemory = raii::makeZeMemHandle(Context, HostPtr);
+
+  // void *DevicePtr;
+  // ZE2UR_CALL_THROWS(zeMemAllocDevice, (Context, NULL, Size * sizeof(uint64_t),
+  //                                      sizeof(uint64_t), Device, &DevicePtr));
+  // DeviceMemory = raii::makeZeMemHandle(Context, DevicePtr);
+
+    const ze_event_pool_counter_based_exp_desc_t counterBasedDesc{ZE_STRUCTURE_TYPE_COUNTER_BASED_EVENT_POOL_EXP_DESC, nullptr, ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_IMMEDIATE};
+
+    ze_event_pool_desc_t eventPoolDesc{ZE_STRUCTURE_TYPE_EVENT_POOL_DESC};
+    eventPoolDesc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
+    eventPoolDesc.count = 2;
+    eventPoolDesc.pNext = &counterBasedDesc;
+
+    ZE2UR_CALL_THROWS(zeEventPoolCreate, (Context, &eventPoolDesc, 1, &Device, &eventPool));
+}
+
+ze_event_handle_t ur_counter_based_event_pool_t::createEvent() {
+  if (Index >= Size)
+    throw UR_RESULT_ERROR_UNKNOWN;
+
+  ZeStruct<ze_event_desc_t> Desc;
+  Desc.wait = 0;
+  Desc.signal = ZE_EVENT_SCOPE_FLAG_HOST;
+  Desc.index = Index;
+
+  // static constexpr size_t CompletionValue = 1;
+  // ze_event_handle_t ZeEvent;
+  // ZE2UR_CALL_THROWS(zexCounterBasedEventCreateFn,
+  //                   (Context, Device,
+  //                    reinterpret_cast<uint64_t *>(DeviceMemory.get()) + Index,
+  //                    reinterpret_cast<uint64_t *>(HostMemory.get()) + Index,
+  //                    CompletionValue, &Desc, &ZeEvent));
+
+  ze_event_handle_t ZeEvent;
+  ZE2UR_CALL_THROWS(zeEventCreate, (eventPool, &Desc, &ZeEvent));
+
+  Index++;
+
+  return ZeEvent;
+}
+
 ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t(
-    ur_context_handle_t, ur_device_handle_t, ur_queue_flags_t) {}
+    ur_context_handle_t Context, ur_device_handle_t Device, ur_queue_flags_t)
+    : Context(Context), Device(Device),
+      EventPool(Context->getPlatform()->ZeDriver, Context->ZeContext,
+                Device->ZeDevice, 2),
+      CCS(Context->CommandListCache.getImmediateCommandList(
+              Device->ZeDevice, true, 0, ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS,
+              ZE_COMMAND_QUEUE_PRIORITY_NORMAL),
+          EventPool.createEvent()),
+      BCS(Context->CommandListCache.getImmediateCommandList(
+              Device->ZeDevice, true, 0, ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS,
+              ZE_COMMAND_QUEUE_PRIORITY_NORMAL),
+          EventPool.createEvent()) {}
+
+ur_command_list_handler_t *ur_queue_immediate_in_order_t::getCommandListHandler(
+    CommandListPreference Preference) {
+  if (Preference == CommandListPreference::Copy && BCS.CommandList) {
+    return &BCS;
+  } else {
+    return &CCS;
+  }
+}
+
+ze_event_handle_t ur_queue_immediate_in_order_t::getSignalEvent(
+    ur_command_list_handler_t *Handler, ur_event_handle_t UserEvent) {
+  std::ignore = UserEvent;
+  return Handler->LastEvent;
+}
 
 ur_result_t
 ur_queue_immediate_in_order_t::queueGetInfo(ur_queue_info_t propName,
@@ -30,7 +137,8 @@ ur_result_t ur_queue_immediate_in_order_t::queueRetain() {
 }
 
 ur_result_t ur_queue_immediate_in_order_t::queueRelease() {
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  delete this;
+  return UR_RESULT_SUCCESS;
 }
 
 ur_result_t ur_queue_immediate_in_order_t::queueGetNativeHandle(
@@ -41,7 +149,8 @@ ur_result_t ur_queue_immediate_in_order_t::queueGetNativeHandle(
 }
 
 ur_result_t ur_queue_immediate_in_order_t::queueFinish() {
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  ZE2UR_CALL(zeEventHostSynchronize, (LastHandler->LastEvent, UINT64_MAX));
+  return UR_RESULT_SUCCESS;
 }
 
 ur_result_t ur_queue_immediate_in_order_t::queueFlush() {
@@ -291,14 +400,19 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMFill(
     void *pMem, size_t patternSize, const void *pPattern, size_t size,
     uint32_t numEventsInWaitList, const ur_event_handle_t *phEventWaitList,
     ur_event_handle_t *phEvent) {
-  std::ignore = pMem;
-  std::ignore = patternSize;
-  std::ignore = pPattern;
-  std::ignore = size;
-  std::ignore = numEventsInWaitList;
-  std::ignore = phEventWaitList;
-  std::ignore = phEvent;
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  // TODO: preference?
+  auto Handler = getCommandListHandler(CommandListPreference::Compute);
+  auto SignalEvent = getSignalEvent(Handler, NULL /*TODO*/);
+
+  // auto WaitList = getWaitList(Handler, numWaitEvents, phWaitEvents);
+  // auto [ZeWaitEvents, ZeNumWaitEvents] = WaitList.getView();
+
+  ZE2UR_CALL(zeCommandListAppendMemoryFill,
+               (Handler->CommandList.get(), pMem, pPattern, patternSize, size, SignalEvent, 0, nullptr));
+
+  LastHandler = Handler;
+
+  return UR_RESULT_SUCCESS;
 }
 
 ur_result_t ur_queue_immediate_in_order_t::enqueueUSMMemcpy(

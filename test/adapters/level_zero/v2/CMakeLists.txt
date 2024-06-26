@@ -30,3 +30,12 @@ endfunction()
 add_unittest(level_zero_command_list_cache
         command_list_cache_test.cpp
         ${PROJECT_SOURCE_DIR}/source/adapters/level_zero/v2/command_list_cache.cpp)
+
+add_adapter_test(urEnqueueKernelLaunchV2
+    FIXTURE DEVICES
+    SOURCES
+        urEnqueueKernelLaunch.cpp
+    ENVIRONMENT
+        "UR_ADAPTERS_FORCE_LOAD=\"$<TARGET_FILE:ur_adapter_level_zero>\""
+        "UR_L0_USE_IMMEDIATE_COMMANDLISTS=1"
+        "UR_L0_USE_QUEUE_V2=1")

@@ -5,6 +5,7 @@
 
 function(add_ur_adapter name)
     add_ur_library(${name} ${ARGN})
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     if(MSVC)
         set(TARGET_LIBNAME ${name})
         string(TOUPPER ${TARGET_LIBNAME} TARGET_LIBNAME)

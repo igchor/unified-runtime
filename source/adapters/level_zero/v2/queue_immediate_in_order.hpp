@@ -14,8 +14,60 @@
 
 #include "ur/ur.hpp"
 
+#include "context.hpp"
+#include "v2_common.hpp"
+
 namespace v2 {
+
+enum class CommandListPreference { Copy, Compute };
+
+struct ur_command_list_handler_t {
+  // TODO: make event raii
+  ur_command_list_handler_t(raii::ze_command_list_t CommandList,
+                            ze_event_handle_t LastEvent);
+
+  raii::ze_command_list_t CommandList;
+  ze_event_handle_t LastEvent;
+};
+
+// TODO: move this to a separate file
+struct ur_counter_based_event_pool_t {
+public:
+  ur_counter_based_event_pool_t(ze_driver_handle_t Driver,
+                                ze_context_handle_t Context,
+                                ze_device_handle_t Device, size_t Size);
+  ze_event_handle_t createEvent();
+
+private:
+  ze_context_handle_t Context;
+  ze_device_handle_t Device;
+  size_t Size;
+
+//   raii::ze_mem_handle_t DeviceMemory;
+//   raii::ze_mem_handle_t HostMemory;
+    ze_event_pool_handle_t eventPool;
+
+  size_t Index = 0;
+};
+
 struct ur_queue_immediate_in_order_t : _ur_object, public ur_queue_handle_t_ {
+private:
+  ur_context_handle_t Context;
+  ur_device_handle_t Device;
+
+  ur_counter_based_event_pool_t EventPool;
+
+  ur_command_list_handler_t CCS;
+  ur_command_list_handler_t BCS;
+
+  ur_command_list_handler_t *LastHandler = &CCS;
+
+  ur_command_list_handler_t *
+  getCommandListHandler(CommandListPreference Preference);
+  ze_event_handle_t getSignalEvent(ur_command_list_handler_t *Handler, ur_event_handle_t UserEvent);
+  // getWaitList()
+
+public:
   ur_queue_immediate_in_order_t(ur_context_handle_t, ur_device_handle_t,
                                 ur_queue_flags_t);
 
