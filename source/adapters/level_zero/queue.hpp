@@ -230,7 +230,7 @@ using ur_command_list_map_t =
 // The iterator pointing to a specific command-list in use.
 using ur_command_list_ptr_t = ur_command_list_map_t::iterator;
 
-struct ur_queue_handle_legacy_t_ : _ur_object, public ur_queue_handle_t_ {
+struct ur_queue_handle_legacy_t_ : public ur_queue_handle_t_ {
   ur_queue_handle_legacy_t_(
       std::vector<ze_command_queue_handle_t> &ComputeQueues,
       std::vector<ze_command_queue_handle_t> &CopyQueues,

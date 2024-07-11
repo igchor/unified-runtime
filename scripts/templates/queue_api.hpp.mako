@@ -23,7 +23,9 @@ from templates import helper as th
 
 #include <ur_api.h>
 
-struct ur_queue_handle_t_ {
+#include "common.hpp"
+
+struct ur_queue_handle_t_ : _ur_object {
     virtual ~ur_queue_handle_t_();
     %for obj in th.get_queue_related_functions(specs, n, tags):
     virtual ${x}_result_t ${th.transform_queue_related_function_name(n, tags, obj, format=["type"])} = 0;
