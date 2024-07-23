@@ -53,6 +53,9 @@ public:
   // Get name of the kernel.
   const std::string &getName() const;
 
+  // Get program handle.
+  ur_program_handle_t getProgramHandle() const;
+
   // Get properties of the kernel.
   const ze_kernel_properties_t &getProperties(ur_device_handle_t hDevice) const;
 

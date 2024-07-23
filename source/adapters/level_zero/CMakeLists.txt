@@ -253,6 +253,7 @@ if(UR_BUILD_ADAPTER_L0_V2)
 
     target_include_directories(ur_adapter_level_zero_v2 PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../.."
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../ur"
         LevelZeroLoader-Headers
     )
 endif()

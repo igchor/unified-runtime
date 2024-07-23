@@ -182,6 +182,10 @@ ur_result_t ur_kernel_handle_t_::setArgValue(
   return UR_RESULT_SUCCESS;
 }
 
+ur_program_handle_t ur_kernel_handle_t_::getProgramHandle() const {
+  return hProgram.get();
+}
+
 UR_APIEXPORT ur_result_t UR_APICALL
 urKernelCreate(ur_program_handle_t hProgram, const char *pKernelName,
                ur_kernel_handle_t *phKernel) {
