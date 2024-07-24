@@ -22,13 +22,13 @@ namespace v2 {
 class ur_event {
 public:
   void attachZeHandle(event_allocation);
-  event_borrowed detachZeHandle();
+  raii::cache_borrowed_event detachZeHandle();
 
   ze_event_handle_t getZeEvent();
 
 private:
   event_type type;
-  event_borrowed zeEvent;
+  raii::cache_borrowed_event zeEvent;
 };
 
 } // namespace v2

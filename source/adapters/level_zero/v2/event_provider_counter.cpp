@@ -58,11 +58,14 @@ event_allocation provider_counter::allocate() {
   freelist.pop_back();
 
   return {event_type::EVENT_COUNTER,
-          event_borrowed(event, [this](ze_event_handle_t handle) {
-            freelist.push_back(handle);
-          })};
+          raii::cache_borrowed_event(event,
+                                     raii::event_cache_deleter(this))};
 }
 
 ur_device_handle_t provider_counter::device() { return urDevice; }
+
+void provider_counter::free(::ze_event_handle_t handle) {
+  freelist.push_back(handle);
+}
 
 } // namespace v2

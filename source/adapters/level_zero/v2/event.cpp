@@ -17,7 +17,7 @@ void ur_event::attachZeHandle(event_allocation event) {
   zeEvent = std::move(event.borrow);
 }
 
-event_borrowed ur_event::detachZeHandle() {
+raii::cache_borrowed_event ur_event::detachZeHandle() {
   // consider make an abstraction for regular/counter based
   // events if there's more of this type of conditions
   if (type == event_type::EVENT_REGULAR) {

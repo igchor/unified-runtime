@@ -57,14 +57,20 @@ provider_pool::~provider_pool() {
   ZE_CALL_NOCHECK(zeEventPoolDestroy, (pool));
 }
 
-event_borrowed provider_pool::allocate() {
+raii::cache_borrowed_event provider_pool::allocate() {
   if (freelist.empty()) {
     return nullptr;
   }
-  ze_event_handle_t e = freelist.back();
+
+  auto e = std::move(freelist.back());
   freelist.pop_back();
-  return event_borrowed(
-      e, [this](ze_event_handle_t handle) { freelist.push_back(handle); });
+
+  return raii::cache_borrowed_event(e,
+                                    raii::event_cache_deleter(this));
+}
+
+void provider_pool::free(::ze_event_handle_t event) {
+  freelist.push_back(event);
 }
 
 size_t provider_pool::nfree() const { return freelist.size(); }

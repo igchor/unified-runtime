@@ -30,13 +30,14 @@ enum queue_type {
   QUEUE_IMMEDIATE,
 };
 
-class provider_pool {
+class provider_pool : public event_deleter {
 public:
   provider_pool(ur_context_handle_t, ur_device_handle_t, event_type,
                 queue_type);
   ~provider_pool();
 
-  event_borrowed allocate();
+  raii::cache_borrowed_event allocate();
+  void free(::ze_event_handle_t event) override;
   size_t nfree() const;
 
 private:

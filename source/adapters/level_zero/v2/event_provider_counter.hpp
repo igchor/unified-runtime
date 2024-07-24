@@ -31,7 +31,7 @@ typedef ze_result_t (*zexCounterBasedEventCreate)(
     uint64_t *deviceAddress, uint64_t *hostAddress, uint64_t completionValue,
     const ze_event_desc_t *desc, ze_event_handle_t *phEvent);
 
-class provider_counter : public event_provider {
+class provider_counter : public event_provider, event_deleter {
 public:
   provider_counter(ur_platform_handle_t platform, ur_context_handle_t,
                    ur_device_handle_t);
@@ -39,6 +39,7 @@ public:
 
   event_allocation allocate() override;
   ur_device_handle_t device() override;
+  void free(::ze_event_handle_t) override;
 
 private:
   ur_device_handle_t urDevice;

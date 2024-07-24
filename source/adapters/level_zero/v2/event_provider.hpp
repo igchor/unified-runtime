@@ -23,12 +23,31 @@ namespace v2 {
 
 enum event_type { EVENT_REGULAR, EVENT_COUNTER };
 
-using event_borrowed =
-    std::unique_ptr<_ze_event_handle_t, std::function<void(ze_event_handle_t)>>;
+class event_deleter;
+
+namespace raii {
+// custom deleter to avoid memory allocations
+struct event_cache_deleter {
+  inline event_cache_deleter() : deleter(nullptr) {}
+  inline event_cache_deleter(event_deleter *deleter) : deleter(deleter) {}
+  inline void operator()(::ze_event_handle_t event) const;
+
+private:
+  event_deleter *deleter;
+};
+
+using cache_borrowed_event =
+    std::unique_ptr<_ze_event_handle_t, event_cache_deleter>;
+} // namespace raii
 
 struct event_allocation {
   event_type type;
-  event_borrowed borrow;
+  raii::cache_borrowed_event borrow;
+};
+
+class event_deleter {
+public:
+  virtual void free(::ze_event_handle_t event) = 0;
 };
 
 class event_provider {
@@ -37,5 +56,13 @@ public:
   virtual event_allocation allocate() = 0;
   virtual ur_device_handle_t device() = 0;
 };
+
+inline void
+raii::event_cache_deleter::operator()(::ze_event_handle_t event) const {
+  if (!deleter)
+    return;
+
+  deleter->free(event);
+}
 
 } // namespace v2
