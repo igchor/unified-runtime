@@ -12,6 +12,7 @@
 #include <functional>
 #include <stack>
 
+#include "latency_tracker.hpp"
 #include <ur/ur.hpp>
 #include <ur_api.h>
 #include <ze_api.h>
@@ -81,5 +82,8 @@ private:
                       raii::ze_command_list_t cmdList);
   raii::ze_command_list_t
   createCommandList(const command_list_descriptor_t &desc);
+
+  latency_histogram immediateGetLatencyTracker;
+  latency_histogram regularGetLatencyTracker;
 };
 } // namespace v2

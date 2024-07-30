@@ -56,7 +56,7 @@ private:
 
   ur_wait_list_t waitList;
 
-  rolling_stats kernelEnqueueLatency;
+  latency_histogram kernelEnqueueLatency;
 
   ur_command_list_handler_t *
   getCommandListHandler(CommandListPreference preference);

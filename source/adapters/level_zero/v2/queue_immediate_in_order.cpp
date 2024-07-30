@@ -160,7 +160,7 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueKernelLaunch(
     const size_t *pGlobalWorkOffset, const size_t *pGlobalWorkSize,
     const size_t *pLocalWorkSize, uint32_t numEventsInWaitList,
     const ::ur_event_handle_t *phEventWaitList, ::ur_event_handle_t *phEvent) {
-  rolling_latency_tracker tracker(kernelEnqueueLatency);
+  latency_tracker tracker(kernelEnqueueLatency);
 
   UR_ASSERT(hKernel->Program, UR_RESULT_ERROR_INVALID_NULL_POINTER);
 

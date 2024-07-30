@@ -12,6 +12,7 @@
 #include <stack>
 
 #include "../common.hpp"
+#include "../event.hpp"
 #include <ur/ur.hpp>
 #include <ur_api.h>
 #include <ze_api.h>
@@ -25,15 +26,15 @@ class event_pool;
 class ur_event_handle_t_;
 using ur_event_handle_t = ur_event_handle_t_ *;
 
-class ur_event_handle_t_ : _ur_object {
+class ur_event_handle_t_ : _ur_object, public ::ur_event_handle_t_ {
 public:
   ur_event_handle_t_(event_allocation eventAllocation, event_pool *pool);
 
   void reset();
   ze_event_handle_t getZeEvent() const;
 
-  ur_result_t retain();
-  ur_result_t release();
+  ur_result_t retain() override;
+  ur_result_t release() override;
 
 private:
   event_type type;

@@ -15,7 +15,7 @@ namespace v2 {
 static constexpr size_t EVENTS_BURST = 64;
 
 ur_event_handle_t_ *event_pool::allocate() {
-  rolling_latency_tracker tracker(allocateLatency);
+  latency_tracker tracker(allocateLatency);
 
   if (freelist.empty()) {
     auto start = events.size();
@@ -33,7 +33,7 @@ ur_event_handle_t_ *event_pool::allocate() {
 }
 
 void event_pool::free(ur_event_handle_t_ *event) {
-  rolling_latency_tracker tracker(freeLatency);
+  latency_tracker tracker(freeLatency);
   event->reset();
   freelist.push_back(event);
 }

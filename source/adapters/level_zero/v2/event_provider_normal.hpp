@@ -69,9 +69,9 @@ private:
   std::unique_ptr<provider_pool> createProviderPool();
   std::vector<std::unique_ptr<provider_pool>> pools;
 
-  rolling_stats allocateLatency;
-  rolling_stats slowPathLatency;
-  rolling_stats poolCreateLatency;
+  latency_histogram allocateLatency;
+  latency_histogram slowPathLatency;
+  latency_histogram poolCreateLatency;
 };
 
 } // namespace v2

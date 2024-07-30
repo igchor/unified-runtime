@@ -52,8 +52,8 @@ private:
   std::deque<ur_event_handle_t_> events;
   std::vector<ur_event_handle_t_ *> freelist;
 
-  rolling_stats allocateLatency;
-  rolling_stats freeLatency;
+  latency_histogram allocateLatency;
+  latency_histogram freeLatency;
 };
 
 } // namespace v2

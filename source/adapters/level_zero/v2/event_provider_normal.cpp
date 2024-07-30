@@ -69,10 +69,10 @@ std::unique_ptr<provider_pool> provider_normal::createProviderPool() {
 }
 
 event_allocation provider_normal::allocate() {
-  rolling_latency_tracker tracker(allocateLatency);
+  latency_tracker tracker(allocateLatency);
 
   if (pools.empty()) {
-    rolling_latency_tracker tracker(poolCreateLatency);
+    latency_tracker tracker(poolCreateLatency);
     pools.emplace_back(createProviderPool());
   }
 
@@ -84,7 +84,7 @@ event_allocation provider_normal::allocate() {
     }
   }
 
-  rolling_latency_tracker trackerSlowPath(slowPathLatency);
+  latency_tracker trackerSlowPath(slowPathLatency);
   std::sort(pools.begin(), pools.end(), [](auto &a, auto &b) {
     return a->nfree() < b->nfree(); // asceding
   });
