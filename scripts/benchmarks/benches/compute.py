@@ -21,7 +21,7 @@ class ComputeBench:
         if self.built:
             return
 
-        repo_path = git_clone(self.directory, "compute-benchmarks-repo", "https://github.com/intel/compute-benchmarks.git", "0f758021dce9ba32341a503739b69db057433c59")
+        repo_path = git_clone(self.directory, "compute-benchmarks-repo", "https://github.com/igchor/compute-benchmarks.git", "f81f1e414182e43494b37a04972b486577f74eb6")
         build_path = create_build_path(self.directory, 'compute-benchmarks-build')
 
         configure_command = [
@@ -30,8 +30,11 @@ class ComputeBench:
             f"-S {repo_path}",
             f"-DCMAKE_BUILD_TYPE=Release",
             f"-DBUILD_SYCL=ON",
+            f"-DBUILD_UR=ON",
             f"-DSYCL_COMPILER_ROOT={options.sycl}",
-            f"-DALLOW_WARNINGS=ON"
+            f"-DUR_BUILD_TESTS=OFF",
+            f"-DALLOW_WARNINGS=ON",
+            {options.ur_build_options}
         ]
         run(configure_command, add_sycl=True)
 
@@ -100,6 +103,26 @@ class SubmitKernelSYCL(ComputeBenchmark):
     def name(self):
         order = "in order" if self.ioq else "out of order"
         return f"api_overhead_benchmark_sycl SubmitKernel {order}"
+
+    def bin_args(self) -> list[str]:
+        return [
+            f"--Ioq={self.ioq}",
+            "--DiscardEvents=0",
+            "--MeasureCompletion=0",
+            "--iterations=100000",
+            "--Profiling=0",
+            "--NumKernels=10",
+            "--KernelExecTime=1"
+        ]
+
+class SubmitKernelUR(ComputeBenchmark):
+    def __init__(self, bench, ioq):
+        self.ioq = ioq
+        super().__init__(bench, "api_overhead_benchmark_ur", "SubmitKernel")
+
+    def name(self):
+        order = "in order" if self.ioq else "out of order"
+        return f"api_overhead_benchmark_ur SubmitKernel {order}"
 
     def bin_args(self) -> list[str]:
         return [
