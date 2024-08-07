@@ -15,13 +15,14 @@ class ComputeBench:
     def __init__(self, directory):
         self.directory = directory
         self.built = False
+        self.adapter_short_name = {'level_zero' : 'L0'}
         return
 
     def setup(self):
         if self.built:
             return
 
-        repo_path = git_clone(self.directory, "compute-benchmarks-repo", "https://github.com/intel/compute-benchmarks.git", "0f758021dce9ba32341a503739b69db057433c59")
+        repo_path = git_clone(self.directory, "compute-benchmarks-repo", "https://github.com/igchor/compute-benchmarks.git", "f81f1e414182e43494b37a04972b486577f74eb6")
         build_path = create_build_path(self.directory, 'compute-benchmarks-build')
 
         configure_command = [
@@ -31,7 +32,14 @@ class ComputeBench:
             f"-DCMAKE_BUILD_TYPE=Release",
             f"-DBUILD_SYCL=ON",
             f"-DSYCL_COMPILER_ROOT={options.sycl}",
-            f"-DALLOW_WARNINGS=ON"
+            f"-DALLOW_WARNINGS=ON",
+            f"-DBUILD_UR=ON",
+            f"-DUR_BUILD_TESTS=OFF",
+            f"-DUR_BUILD_ADAPTER_L0=ON",
+            f"-DUR_BUILD_TESTS=OFF",
+            f"-DUMF_DISABLE_HWLOC=ON",
+            f"-DBENCHMARK_UR_SOURCE_DIR={options.ur_dir}",
+            f"-DUR_BUILD_ADAPTER_{self.adapter_short_name[options.ur_adapter_name]}=ON"
         ]
         run(configure_command, add_sycl=True)
 
@@ -39,6 +47,7 @@ class ComputeBench:
 
         self.built = True
         self.bins = os.path.join(build_path, 'bin')
+        self.libs = os.path.join(build_path, 'lib')
 
 class ComputeBenchmark(Benchmark):
     def __init__(self, bench, name, test):
@@ -72,6 +81,7 @@ class ComputeBenchmark(Benchmark):
         env_vars.update(self.extra_env_vars())
 
         result = self.run_bench(command, env_vars)
+        print(result)
         (label, mean) = self.parse_output(result)
         return Result(label=label, value=mean, command=command, env=env_vars, stdout=result)
 
@@ -100,6 +110,29 @@ class SubmitKernelSYCL(ComputeBenchmark):
     def name(self):
         order = "in order" if self.ioq else "out of order"
         return f"api_overhead_benchmark_sycl SubmitKernel {order}"
+
+    def bin_args(self) -> list[str]:
+        return [
+            f"--Ioq={self.ioq}",
+            "--DiscardEvents=0",
+            "--MeasureCompletion=0",
+            "--iterations=100000",
+            "--Profiling=0",
+            "--NumKernels=10",
+            "--KernelExecTime=1"
+        ]
+
+class SubmitKernelUR(ComputeBenchmark):
+    def __init__(self, bench, ioq):
+        self.ioq = ioq
+        super().__init__(bench, "api_overhead_benchmark_ur", "SubmitKernel")
+
+    def name(self):
+        order = "in order" if self.ioq else "out of order"
+        return f"api_overhead_benchmark_ur SubmitKernel {order}"
+
+    def extra_env_vars(self) -> dict:
+        return {"UR_ADAPTERS_FORCE_LOAD" : os.path.join(self.bench.libs, f"libur_adapter_{options.ur_adapter_name}.so")}
 
     def bin_args(self) -> list[str]:
         return [
@@ -209,4 +242,3 @@ class VectorSum(ComputeBenchmark):
             "--numberOfElementsY=256",
             "--numberOfElementsZ=256",
         ]
-
