@@ -14,6 +14,7 @@
 
 #include "command_list_cache.hpp"
 #include "event_pool_cache.hpp"
+#include "usm.hpp"
 
 struct ur_context_handle_t_ : _ur_object {
   ur_context_handle_t_(ze_context_handle_t hContext, uint32_t numDevices,
@@ -31,8 +32,12 @@ struct ur_context_handle_t_ : _ur_object {
   // For that the Device or its root devices need to be in the context.
   bool isValidDevice(ur_device_handle_t Device) const;
 
+  ur_usm_pool_handle_t getDefaultUSMPool();
+
   const ze_context_handle_t hContext;
   const std::vector<ur_device_handle_t> hDevices;
   v2::command_list_cache_t commandListCache;
   v2::event_pool_cache eventPoolCache;
+
+  ur_usm_pool_handle_t_ defaultUSMPool;
 };

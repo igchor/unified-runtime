@@ -64,6 +64,12 @@ public:
                           const ur_kernel_arg_value_properties_t *pProperties,
                           const void *pArgValue);
 
+  // Implementation of urKernelSetArgPointer.
+  ur_result_t
+  setArgPointer(uint32_t argIndex,
+                const ur_kernel_arg_pointer_properties_t *pProperties,
+                const void *pArgValue);
+
   // Perform cleanup.
   ur_result_t release();
 

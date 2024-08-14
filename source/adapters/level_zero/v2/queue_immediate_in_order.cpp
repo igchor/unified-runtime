@@ -86,13 +86,24 @@ ur_queue_immediate_in_order_t::ur_queue_immediate_in_order_t(
       computeHandler(hContext, hDevice, pProps, queue_group_type::Compute,
                      eventPool.get()) {}
 
-ur_command_list_handler_t *ur_queue_immediate_in_order_t::getCommandListHandler(
-    CommandListPreference preference) {
-  if (preference == CommandListPreference::Copy) {
+ur_command_list_handler_t *
+ur_queue_immediate_in_order_t::getCommandListHandlerForCompute() {
+  return &computeHandler;
+}
+
+ur_command_list_handler_t *
+ur_queue_immediate_in_order_t::getCommandListHandlerForCopy() {
+  return &copyHandler;
+}
+
+ur_command_list_handler_t *
+ur_queue_immediate_in_order_t::getCommandListHandlerForFill(
+    size_t patternSize) {
+  if (patternSize <= hDevice->QueueGroup[queue_group_type::MainCopy]
+                         .ZeProperties.maxMemoryFillPatternSize)
     return &copyHandler;
-  } else {
+  else
     return &computeHandler;
-  }
 }
 
 ze_event_handle_t ur_queue_immediate_in_order_t::getSignalEvent(
@@ -217,7 +228,7 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueKernelLaunch(
       reinterpret_cast<const ur_event_handle_t *>(phEventWaitList);
   auto v2SignalEvent = reinterpret_cast<ur_event_handle_t *>(phEvent);
 
-  auto handler = getCommandListHandler(CommandListPreference::Compute);
+  auto handler = getCommandListHandlerForCompute();
   auto signalEvent = getSignalEvent(handler, v2SignalEvent);
 
   auto extraWaitEvent = (lastHandler && handler != lastHandler)
@@ -464,14 +475,28 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMFill(
     void *pMem, size_t patternSize, const void *pPattern, size_t size,
     uint32_t numEventsInWaitList, const ur_event_handle_t *phEventWaitList,
     ur_event_handle_t *phEvent) {
-  std::ignore = pMem;
-  std::ignore = patternSize;
-  std::ignore = pPattern;
-  std::ignore = size;
-  std::ignore = numEventsInWaitList;
-  std::ignore = phEventWaitList;
-  std::ignore = phEvent;
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  TRACK_SCOPE_LATENCY("ur_queue_immediate_in_order_t::enqueueUSMFill");
+
+  // Lock automatically releases when this goes out of scope.
+  std::scoped_lock<ur_shared_mutex> Lock(this->Mutex);
+
+  auto handler = getCommandListHandlerForFill(patternSize);
+  auto signalEvent = getSignalEvent(handler, phEvent);
+
+  auto extraWaitEvent = (lastHandler && handler != lastHandler)
+                            ? lastHandler->lastEvent.get()
+                            : nullptr;
+  auto [pWaitEvents, numWaitEvents] =
+      waitList.getView(phEventWaitList, numEventsInWaitList, extraWaitEvent);
+
+  // TODO:
+  // PatternSize must be a power of two for zeCommandListAppendMemoryFill.
+  // When it's not, the fill is emulated with zeCommandListAppendMemoryCopy.
+  ZE2UR_CALL(zeCommandListAppendMemoryFill,
+             (handler->commandList.get(), pMem, pPattern, patternSize, size,
+              signalEvent, numWaitEvents, pWaitEvents));
+
+  return UR_RESULT_SUCCESS;
 }
 
 ur_result_t ur_queue_immediate_in_order_t::enqueueUSMMemcpy(

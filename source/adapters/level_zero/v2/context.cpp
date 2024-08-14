@@ -27,7 +27,8 @@ ur_context_handle_t_::ur_context_handle_t_(ze_context_handle_t hContext,
                        return std::make_unique<v2::provider_normal>(
                            context, device, v2::EVENT_COUNTER,
                            v2::QUEUE_IMMEDIATE);
-                     }) {
+                     }),
+      defaultUSMPool(this, nullptr) {
   std::ignore = ownZeContext;
 }
 
@@ -72,6 +73,10 @@ bool ur_context_handle_t_::isValidDevice(ur_device_handle_t hDevice) const {
   return false;
 }
 
+ur_usm_pool_handle_t ur_context_handle_t_::getDefaultUSMPool() {
+  return &defaultUSMPool;
+}
+
 UR_APIEXPORT ur_result_t UR_APICALL
 urContextCreate(uint32_t deviceCount, const ur_device_handle_t *phDevices,
                 const ur_context_properties_t *pProperties,
@@ -97,4 +102,27 @@ urContextRetain(ur_context_handle_t hContext) {
 UR_APIEXPORT ur_result_t UR_APICALL
 urContextRelease(ur_context_handle_t hContext) {
   return hContext->release();
+}
+
+UR_APIEXPORT ur_result_t UR_APICALL
+urContextGetInfo(ur_context_handle_t hContext,
+                 ur_context_info_t contextInfoType, size_t propSize,
+
+                 void *pContextInfo,
+
+                 size_t *pPropSizeRet) {
+  std::shared_lock<ur_shared_mutex> Lock(hContext->Mutex);
+  UrReturnHelper ReturnValue(propSize, pContextInfo, pPropSizeRet);
+  switch (
+      (uint32_t)contextInfoType) { // cast to avoid warnings on EXT enum values
+  case UR_CONTEXT_INFO_DEVICES:
+    return ReturnValue(hContext->getDevices().data(),
+                       hContext->getDevices().size());
+  case UR_CONTEXT_INFO_NUM_DEVICES:
+    return ReturnValue(uint32_t(hContext->getDevices().size()));
+  case UR_CONTEXT_INFO_REFERENCE_COUNT:
+    return ReturnValue(uint32_t{hContext->RefCount.load()});
+  default:
+    return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  }
 }

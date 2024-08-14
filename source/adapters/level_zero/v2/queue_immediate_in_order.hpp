@@ -58,8 +58,12 @@ private:
 
   ur_wait_list_t waitList;
 
-  ur_command_list_handler_t *
-  getCommandListHandler(CommandListPreference preference);
+  ur_command_list_handler_t *getCommandListHandlerForCompute();
+
+  ur_command_list_handler_t *getCommandListHandlerForCopy();
+
+  ur_command_list_handler_t *getCommandListHandlerForFill(size_t patternSize);
+
   ze_event_handle_t getSignalEvent(ur_command_list_handler_t *handler,
                                    ur_event_handle_t *hUserEvent);
 

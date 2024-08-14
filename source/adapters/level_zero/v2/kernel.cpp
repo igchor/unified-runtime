@@ -146,14 +146,9 @@ ur_kernel_handle_t_::getProperties(ur_device_handle_t hDevice) const {
 }
 
 ur_result_t ur_kernel_handle_t_::setArgValue(
-    uint32_t argIndex, ///< [in] argument index in range [0, num args - 1]
-    size_t argSize,    ///< [in] size of argument type
-    const ur_kernel_arg_value_properties_t
-        *pProperties, ///< [in][optional] argument properties
-    const void
-        *pArgValue ///< [in] argument value represented as matching arg type.
-) {
-  TRACK_SCOPE_LATENCY("ur_kernel_handle_t_::setArgValue");
+    uint32_t argIndex, size_t argSize,
+    const ur_kernel_arg_value_properties_t *pProperties,
+    const void *pArgValue) {
   std::ignore = pProperties;
 
   // OpenCL: "the arg_value pointer can be NULL or point to a NULL value
@@ -180,6 +175,15 @@ ur_result_t ur_kernel_handle_t_::setArgValue(
                 pArgValue));
   }
   return UR_RESULT_SUCCESS;
+}
+
+ur_result_t ur_kernel_handle_t_::setArgPointer(
+    uint32_t argIndex, const ur_kernel_arg_pointer_properties_t *pProperties,
+    const void *pArgValue) {
+  std::ignore = pProperties;
+
+  // KernelSetArgValue is expecting a pointer to the argument
+  return setArgValue(argIndex, sizeof(const void *), nullptr, &pArgValue);
 }
 
 ur_program_handle_t ur_kernel_handle_t_::getProgramHandle() const {
@@ -222,5 +226,18 @@ UR_APIEXPORT ur_result_t UR_APICALL urKernelSetArgValue(
     const void
         *pArgValue ///< [in] argument value represented as matching arg type.
 ) {
+  TRACK_SCOPE_LATENCY("ur_kernel_handle_t_::setArgValue");
   return hKernel->setArgValue(argIndex, argSize, pProperties, pArgValue);
+}
+
+UR_APIEXPORT ur_result_t UR_APICALL urKernelSetArgPointer(
+    ur_kernel_handle_t hKernel, ///< [in] handle of the kernel object
+    uint32_t argIndex, ///< [in] argument index in range [0, num args - 1]
+    const ur_kernel_arg_pointer_properties_t
+        *pProperties, ///< [in][optional] argument properties
+    const void
+        *pArgValue ///< [in] argument value represented as matching arg type.
+) {
+  TRACK_SCOPE_LATENCY("ur_kernel_handle_t_::setArgPointer");
+  return hKernel->setArgPointer(argIndex, pProperties, pArgValue);
 }

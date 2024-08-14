@@ -20,12 +20,11 @@ target_include_directories(ur_common PUBLIC
 
 message(STATUS "Download Unified Memory Framework from github.com")
 if (NOT DEFINED UMF_REPO)
-    set(UMF_REPO "https://github.com/oneapi-src/unified-memory-framework.git")
+    set(UMF_REPO "https://github.com/igchor/unified-memory-framework.git")
 endif()
 
 if (NOT DEFINED UMF_TAG)
-    # v0.9.x 05.08.2024: Merge pull request #662 ...
-    set(UMF_TAG 85e3bd72dbaa95e9e5fd2a4a787714b7cf1c6a16)
+    set(UMF_TAG ec67c7dc700423972e766949b317afa4cdc2143e)
 endif()
 
 message(STATUS "Will fetch Unified Memory Framework from ${UMF_REPO}")
@@ -39,7 +38,7 @@ FetchContent_Declare(unified-memory-framework
 set(UMF_BUILD_TESTS OFF CACHE INTERNAL "Build UMF tests")
 set(UMF_BUILD_EXAMPLES OFF CACHE INTERNAL "Build UMF examples")
 # TODO: L0 provider not ready yet
-set(UMF_BUILD_LEVEL_ZERO_PROVIDER OFF CACHE INTERNAL "Build Level Zero Provider")
+set(UMF_BUILD_LEVEL_ZERO_PROVIDER ON CACHE INTERNAL "Build Level Zero Provider")
 set(UMF_BUILD_SHARED_LIBRARY ${UMF_BUILD_SHARED_LIBRARY} CACHE INTERNAL "Build UMF shared library")
 set(UMF_BUILD_LIBUMF_POOL_DISJOINT ON CACHE INTERNAL "Build Disjoint Pool")
 
