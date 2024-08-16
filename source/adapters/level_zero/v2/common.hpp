@@ -164,5 +164,8 @@ using ur_queue_shared_handle_t =
 using ur_kernel_shared_handle_t =
     ur_shared_handle<ur_kernel_handle_t, urKernelRetain, urKernelRelease>;
 
+using ur_event_shared_handle_t =
+    ur_shared_handle<ur_event_handle_t, urEventRetain, urEventRelease>;
+
 } // namespace raii
 } // namespace v2

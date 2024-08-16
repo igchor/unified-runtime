@@ -220,12 +220,22 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMDeviceAlloc(
         size, ///< [in] size in bytes of the USM memory object to be allocated
     void **ppRetMem ///< [out] pointer to USM device memory object
 ) {
-  if (!hPool) {
-    hPool = hContext->getDefaultUSMPool();
-  }
+  // if (!hPool) {
+  //   hPool = hContext->getDefaultUSMPool();
+  // }
 
-  return hPool->allocate(hContext, hDevice, pUSMDesc, UR_USM_TYPE_DEVICE, size,
-                         ppRetMem);
+  // return hPool->allocate(hContext, hDevice, pUSMDesc, UR_USM_TYPE_DEVICE,
+  // size,
+  //                        ppRetMem);
+  ze_device_mem_alloc_desc_t dev_desc;
+  dev_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+  dev_desc.pNext = NULL;
+  dev_desc.flags = 0;
+  dev_desc.ordinal = 0;
+  ZE2UR_CALL(zeMemAllocDevice, (hContext->getZeHandle(), &dev_desc, size, 0,
+                                hDevice->ZeDevice, ppRetMem));
+
+  return UR_RESULT_SUCCESS;
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urUSMSharedAlloc(
@@ -278,12 +288,24 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMHostAlloc(
         size, ///< [in] size in bytes of the USM memory object to be allocated
     void **ppRetMem ///< [out] pointer to USM host memory object
 ) {
-  if (!hPool) {
-    hPool = hContext->getDefaultUSMPool();
-  }
+  // if (!hPool) {
+  //   hPool = hContext->getDefaultUSMPool();
+  // }
 
-  return hPool->allocate(hContext, nullptr, pUSMDesc, UR_USM_TYPE_HOST, size,
-                         ppRetMem);
+  // return hPool->allocate(hContext, nullptr, pUSMDesc, UR_USM_TYPE_HOST, size,
+  //                        ppRetMem);
+
+  ze_host_mem_alloc_desc_t host_desc;
+  host_desc.stype = ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC;
+  host_desc.pNext = NULL;
+  host_desc.flags = 0;
+
+  ZE2UR_CALL(zeMemAllocHost,
+             (hContext->getZeHandle(), &host_desc, size, 0, ppRetMem));
+  // ZE2UR_CALL(zeContextMakeMemoryResident,
+  //            (hContext->getZeHandle(), hDevice->ZeDevice, *ppRetMem, size));
+
+  return UR_RESULT_SUCCESS;
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urUSMFree(
@@ -294,5 +316,77 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMFree(
   // return umf::umf2urResult(umfFree(pMem));
 
   ZE2UR_CALL(zeMemFree, (hContext->getZeHandle(), pMem));
+  return UR_RESULT_SUCCESS;
+}
+
+UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
+    ur_context_handle_t hContext, ///< [in] handle of the context object
+    const void *ptr,              ///< [in] pointer to USM memory object
+    ur_usm_alloc_info_t
+        propName, ///< [in] the name of the USM allocation property to query
+    size_t propValueSize, ///< [in] size in bytes of the USM allocation property
+                          ///< value
+    void *pPropValue, ///< [out][optional] value of the USM allocation property
+    size_t *pPropValueSizeRet ///< [out][optional] bytes returned in USM
+                              ///< allocation property
+) {
+  ze_device_handle_t zeDeviceHandle;
+  ZeStruct<ze_memory_allocation_properties_t> zeMemoryAllocationProperties;
+
+  ZE2UR_CALL(zeMemGetAllocProperties,
+             (hContext->getZeHandle(), ptr, &zeMemoryAllocationProperties,
+              &zeDeviceHandle));
+
+  UrReturnHelper ReturnValue(propValueSize, pPropValue, pPropValueSizeRet);
+  switch (propName) {
+  case UR_USM_ALLOC_INFO_TYPE: {
+    ur_usm_type_t memAllocType;
+    switch (zeMemoryAllocationProperties.type) {
+    case ZE_MEMORY_TYPE_UNKNOWN:
+      memAllocType = UR_USM_TYPE_UNKNOWN;
+      break;
+    case ZE_MEMORY_TYPE_HOST:
+      memAllocType = UR_USM_TYPE_HOST;
+      break;
+    case ZE_MEMORY_TYPE_DEVICE:
+      memAllocType = UR_USM_TYPE_DEVICE;
+      break;
+    case ZE_MEMORY_TYPE_SHARED:
+      memAllocType = UR_USM_TYPE_SHARED;
+      break;
+    default:
+      logger::error("urUSMGetMemAllocInfo: unexpected usm memory type");
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+    return ReturnValue(memAllocType);
+  }
+  case UR_USM_ALLOC_INFO_DEVICE:
+    if (zeDeviceHandle) {
+      auto Platform = hContext->getPlatform();
+      auto Device = Platform->getDeviceFromNativeHandle(zeDeviceHandle);
+      return Device ? ReturnValue(Device) : UR_RESULT_ERROR_INVALID_VALUE;
+    } else {
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+  case UR_USM_ALLOC_INFO_BASE_PTR: {
+    void *base;
+    ZE2UR_CALL(zeMemGetAddressRange,
+               (hContext->getZeHandle(), ptr, &base, nullptr));
+    return ReturnValue(base);
+  }
+  case UR_USM_ALLOC_INFO_SIZE: {
+    size_t size;
+    ZE2UR_CALL(zeMemGetAddressRange,
+               (hContext->getZeHandle(), ptr, nullptr, &size));
+    return ReturnValue(size);
+  }
+  case UR_USM_ALLOC_INFO_POOL: {
+    // TODO
+    return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  default:
+    logger::error("urUSMGetMemAllocInfo: unsupported ParamName");
+    return UR_RESULT_ERROR_INVALID_VALUE;
+  }
+  }
   return UR_RESULT_SUCCESS;
 }

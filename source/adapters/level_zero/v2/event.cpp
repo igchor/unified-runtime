@@ -52,3 +52,41 @@ UR_APIEXPORT ur_result_t UR_APICALL urEventRetain(ur_event_handle_t hEvent) {
 UR_APIEXPORT ur_result_t UR_APICALL urEventRelease(ur_event_handle_t hEvent) {
   return hEvent->release();
 }
+
+ur_result_t UR_APICALL urEventGetInfo(ur_event_handle_t hEvent,
+                                      ur_event_info_t propName, size_t propSize,
+                                      void *pPropValue, size_t *pPropSizeRet) {
+  UrReturnHelper ReturnValue(propSize, pPropValue, pPropSizeRet);
+
+  switch (propName) {
+  case UR_EVENT_INFO_COMMAND_EXECUTION_STATUS: {
+    ze_result_t status =
+        ZE_CALL_NOCHECK(zeEventQueryStatus, (hEvent->getZeEvent()));
+    switch (status) {
+    case ZE_RESULT_SUCCESS:
+      return ReturnValue(UR_EVENT_STATUS_COMPLETE);
+    case ZE_RESULT_NOT_READY:
+      return ReturnValue(UR_EVENT_STATUS_RUNNING);
+    default:
+      return ze2urResult(status);
+    }
+  }
+  default:
+    return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  }
+}
+
+// TODO: optimize
+UR_APIEXPORT ur_result_t UR_APICALL
+urEventWait(uint32_t numEvents, const ur_event_handle_t *phEventWaitList) {
+  // std::vector<ze_event_handle_t> zeEvents;
+  for (uint32_t i = 0; i < numEvents; ++i) {
+    // zeEvents.push_back(phEventWaitList[i]->getZeEvent());
+    ZE2UR_CALL(zeEventHostSynchronize,
+               (phEventWaitList[i]->getZeEvent(), UINT64_MAX));
+  }
+
+  // ZE2UR_CALL(zeEventHostSynchronize, (zeEvents, UINT64_MAX));
+
+  return UR_RESULT_SUCCESS;
+}
