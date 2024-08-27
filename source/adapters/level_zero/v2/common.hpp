@@ -163,6 +163,9 @@ using ze_event_pool_handle_t =
 using ze_context_handle_t =
     ze_handle_wrapper<::ze_context_handle_t, zeContextDestroy>;
 
+using ze_command_list_handle_t =
+    ze_handle_wrapper<::ze_command_list_handle_t, zeCommandListDestroy>;
+
 using ur_queue_shared_handle_t =
     ur_shared_handle<ur_queue_handle_t, urQueueRetain, urQueueRelease>;
 
