@@ -54,6 +54,8 @@ struct ze_handle_wrapper {
     try {
       reset();
     } catch (...) {
+      // TODO: add appropriate logging or pass the error
+      // to the caller (make the dtor noexcept(false) or use tls?)
     }
   }
 
@@ -157,6 +159,9 @@ using ze_event_handle_t =
 
 using ze_event_pool_handle_t =
     ze_handle_wrapper<::ze_event_pool_handle_t, zeEventPoolDestroy>;
+
+using ze_context_handle_t =
+    ze_handle_wrapper<::ze_context_handle_t, zeContextDestroy>;
 
 using ur_queue_shared_handle_t =
     ur_shared_handle<ur_queue_handle_t, urQueueRetain, urQueueRelease>;
