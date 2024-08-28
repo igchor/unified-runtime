@@ -60,7 +60,7 @@ class ComputeBenchmark(Benchmark):
         return []
 
     def extra_env_vars(self) -> dict:
-        return {}
+        return {"UR_ADAPTERS_FORCE_LOAD" : os.path.join(self.bench.libs, f"libur_adapter_{options.ur_adapter_name}.so")}
 
     def unit(self):
         return "μs"
@@ -129,9 +129,6 @@ class SubmitKernelUR(ComputeBenchmark):
     def name(self):
         order = "in order" if self.ioq else "out of order"
         return f"api_overhead_benchmark_ur SubmitKernel {order}"
-
-    def extra_env_vars(self) -> dict:
-        return {"UR_ADAPTERS_FORCE_LOAD" : os.path.join(self.bench.libs, f"libur_adapter_{options.ur_adapter_name}.so")}
 
     def bin_args(self) -> list[str]:
         return [
