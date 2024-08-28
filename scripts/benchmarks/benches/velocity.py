@@ -10,6 +10,7 @@ from utils.utils import run, create_build_path
 from .options import options
 import os
 import re
+from .options import options
 
 class VelocityBench:
     def __init__(self, directory):
@@ -23,6 +24,7 @@ class VelocityBase(Benchmark):
         self.bench_name = name
         self.bin_name = bin_name
         self.code_path = os.path.join(self.vb.repo_path, self.bench_name, 'SYCL')
+        self.adapter_path = os.path.join(options.ur_dir, 'build', 'lib', f"libur_adapter_{options.ur_adapter_name}.so")
 
     def download_deps(self):
         return
@@ -47,7 +49,7 @@ class VelocityBase(Benchmark):
         return []
 
     def extra_env_vars(self) -> dict:
-        return {}
+        return {"UR_ADAPTERS_FORCE_LOAD" : self.adapter_path}
 
     def parse_output(self, stdout: str) -> float:
         raise NotImplementedError()

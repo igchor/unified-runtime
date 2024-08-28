@@ -56,7 +56,7 @@ class ComputeBenchmark(Benchmark):
         return []
 
     def extra_env_vars(self) -> dict:
-        return {}
+        return {"UR_ADAPTERS_FORCE_LOAD" : os.path.join(self.bench.libs, f"libur_adapter_{options.ur_adapter_name}.so")}
 
     def unit(self):
         return "μs"
