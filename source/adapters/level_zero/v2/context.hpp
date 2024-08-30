@@ -26,7 +26,9 @@ struct ur_context_handle_t_ : _ur_object {
 
   inline ze_context_handle_t getZeHandle() const { return hContext.get(); }
   ur_platform_handle_t getPlatform() const;
-  const std::vector<ur_device_handle_t> &getDevices() const;
+  inline const std::vector<ur_device_handle_t> &getDevices() {
+    return hDevices;
+  }
   ur_usm_pool_handle_t getDefaultUSMPool();
 
   // Checks if Device is covered by this context.

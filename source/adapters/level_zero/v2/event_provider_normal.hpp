@@ -33,7 +33,7 @@ enum queue_type {
 
 class provider_pool {
 public:
-  provider_pool(ur_context_handle_t, ur_device_handle_t, event_type,
+  provider_pool(ur_context_handle_t, event_type,
                 queue_type);
 
   raii::cache_borrowed_event allocate();
@@ -46,11 +46,9 @@ private:
 
 class provider_normal : public event_provider {
 public:
-  provider_normal(ur_context_handle_t context, ur_device_handle_t device,
+  provider_normal(ur_context_handle_t context,
                   event_type etype, queue_type qtype)
-      : producedType(etype), queueType(qtype), urContext(context),
-        urDevice(device) {
-    urDeviceRetain(device);
+      : producedType(etype), queueType(qtype), urContext(context) {
   }
 
   ~provider_normal() override { urDeviceRelease(urDevice); }
@@ -62,7 +60,6 @@ private:
   event_type producedType;
   queue_type queueType;
   ur_context_handle_t urContext;
-  ur_device_handle_t urDevice;
 
   std::unique_ptr<provider_pool> createProviderPool();
   std::vector<std::unique_ptr<provider_pool>> pools;

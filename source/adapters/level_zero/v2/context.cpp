@@ -47,11 +47,6 @@ ur_platform_handle_t ur_context_handle_t_::getPlatform() const {
   return hDevices[0]->Platform;
 }
 
-const std::vector<ur_device_handle_t> &
-ur_context_handle_t_::getDevices() const {
-  return hDevices;
-}
-
 bool ur_context_handle_t_::isValidDevice(ur_device_handle_t hDevice) const {
   while (hDevice) {
     if (std::find(hDevices.begin(), hDevices.end(), hDevice) != hDevices.end())

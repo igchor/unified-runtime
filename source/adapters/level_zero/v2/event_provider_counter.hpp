@@ -32,6 +32,7 @@ typedef ze_result_t (*zexCounterBasedEventCreate)(
     uint64_t *deviceAddress, uint64_t *hostAddress, uint64_t completionValue,
     const ze_event_desc_t *desc, ze_event_handle_t *phEvent);
 
+// TODO: can this support multi-device events?
 class provider_counter : public event_provider {
 public:
   provider_counter(ur_platform_handle_t platform, ur_context_handle_t,

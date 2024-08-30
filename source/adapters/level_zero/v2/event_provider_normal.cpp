@@ -25,7 +25,7 @@ namespace v2 {
 static constexpr int EVENTS_BURST = 64;
 
 provider_pool::provider_pool(ur_context_handle_t context,
-                             ur_device_handle_t device, event_type events,
+                             event_type events,
                              queue_type queue) {
   ZeStruct<ze_event_pool_desc_t> desc;
   desc.count = EVENTS_BURST;
@@ -42,10 +42,16 @@ provider_pool::provider_pool(ur_context_handle_t context,
     desc.pNext = &counterBasedExt;
   }
 
+  std::vector<ze_device_handle_t> devices;
+  for (auto &device : context->getDevices()) {
+    devices.push_back(device->ZeDevice);
+  }
+
   ZE2UR_CALL_THROWS(zeEventPoolCreate,
-                    (context->getZeHandle(), &desc, 1,
-                     const_cast<ze_device_handle_t *>(&device->ZeDevice),
+                    (context->getZeHandle(), &desc, devices.size(),
+                     devices.data(),
                      pool.ptr()));
+                     
 
   freelist.resize(EVENTS_BURST);
   for (int i = 0; i < EVENTS_BURST; ++i) {
@@ -71,7 +77,7 @@ raii::cache_borrowed_event provider_pool::allocate() {
 size_t provider_pool::nfree() const { return freelist.size(); }
 
 std::unique_ptr<provider_pool> provider_normal::createProviderPool() {
-  return std::make_unique<provider_pool>(urContext, urDevice, producedType,
+  return std::make_unique<provider_pool>(urContext, producedType,
                                          queueType);
 }
 
@@ -106,7 +112,5 @@ event_allocation provider_normal::allocate() {
 
   return allocate();
 }
-
-ur_device_handle_t provider_normal::device() { return urDevice; }
 
 } // namespace v2
