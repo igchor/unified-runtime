@@ -13,6 +13,21 @@
 
 #include "../device.hpp"
 
+typedef struct _zex_intel_queue_copy_operations_offload_hint_exp_desc_t {
+  ze_structure_type_t stype;
+  const void *pNext;
+  ze_bool_t copyOffloadEnabled;
+} zex_intel_queue_copy_operations_offload_hint_exp_desc_t;
+
+#define ZEX_INTEL_STRUCTURE_TYPE_QUEUE_COPY_OPERATIONS_OFFLOAD_HINT_EXP_PROPERTIES \
+  (ze_structure_type_t)0x0003001B
+
+template <>
+ze_structure_type_t
+getZeStructureType<zex_intel_queue_copy_operations_offload_hint_exp_desc_t>() {
+  return ZEX_INTEL_STRUCTURE_TYPE_QUEUE_COPY_OPERATIONS_OFFLOAD_HINT_EXP_PROPERTIES;
+}
+
 bool v2::immediate_command_list_descriptor_t::operator==(
     const immediate_command_list_descriptor_t &rhs) const {
   return ZeDevice == rhs.ZeDevice && IsInOrder == rhs.IsInOrder &&
@@ -58,6 +73,13 @@ command_list_cache_t::createCommandList(const command_list_descriptor_t &desc) {
       QueueDesc.flags |= ZE_COMMAND_QUEUE_FLAG_EXPLICIT_ONLY;
       QueueDesc.index = ImmCmdDesc->Index.value();
     }
+
+    // TODO: under else?
+    ZeStruct<zex_intel_queue_copy_operations_offload_hint_exp_desc_t>
+        offloadDesc;
+    offloadDesc.copyOffloadEnabled = false;
+    QueueDesc.pNext = &offloadDesc;
+
     ZE2UR_CALL_THROWS(
         zeCommandListCreateImmediate,
         (ZeContext, ImmCmdDesc->ZeDevice, &QueueDesc, &ZeCommandList));
@@ -68,6 +90,11 @@ command_list_cache_t::createCommandList(const command_list_descriptor_t &desc) {
     CmdListDesc.flags =
         RegCmdDesc.IsInOrder ? ZE_COMMAND_LIST_FLAG_IN_ORDER : 0;
     CmdListDesc.commandQueueGroupOrdinal = RegCmdDesc.Ordinal;
+
+    ZeStruct<zex_intel_queue_copy_operations_offload_hint_exp_desc_t>
+        offloadDesc;
+    offloadDesc.copyOffloadEnabled = false;
+    CmdListDesc.pNext = &offloadDesc;
 
     ze_command_list_handle_t ZeCommandList;
     ZE2UR_CALL_THROWS(zeCommandListCreate, (ZeContext, RegCmdDesc.ZeDevice,
