@@ -66,6 +66,16 @@ descToDisjoinPoolMemType(const usm::pool_descriptor &desc) {
   }
 }
 
+static std::map<std::string, std::function<ur_result_t(int32_t)>> &
+    umfNativeErrorHandlers =
+        []() -> std::map<std::string, std::function<ur_result_t(int32_t)>> & {
+  auto &handlers = umf::getNativeErrorHandlers();
+  handlers.emplace("LEVEL_ZERO", [](int32_t err) {
+    return ze2urResult(static_cast<ze_result_t>(err));
+  });
+  return handlers;
+}();
+
 static umf::pool_unique_handle_t
 makePool(umf_disjoint_pool_params_t *poolParams,
          usm::pool_descriptor poolDescriptor) {
