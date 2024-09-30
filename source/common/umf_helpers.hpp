@@ -26,6 +26,8 @@
 #include <tuple>
 #include <utility>
 
+ur_result_t ze2urResult(uint32_t ZeResult);
+
 namespace umf {
 
 using pool_unique_handle_t =
@@ -241,6 +243,12 @@ template <typename Type> umf_result_t &getPoolLastStatusRef() {
     return last_status;
 }
 
+static inline std::map<std::string, std::function<ur_result_t(int32_t)>> &
+getNativeErrorHandlers() {
+    static std::map<std::string, std::function<ur_result_t(int32_t)>> handlers;
+    return handlers;
+}
+
 /// @brief translates UMF return values to UR.
 /// This function assumes that the native error of
 /// the last failed memory provider is ur_result_t.
@@ -256,16 +264,21 @@ inline ur_result_t umf2urResult(umf_result_t umfResult) {
             return UR_RESULT_ERROR_UNKNOWN;
         }
 
-        ur_result_t Err = UR_RESULT_ERROR_UNKNOWN;
+        int32_t Err = UR_RESULT_ERROR_UNKNOWN;
         const char *Msg = nullptr;
-        umfMemoryProviderGetLastNativeError(hProvider, &Msg,
-                                            reinterpret_cast<int32_t *>(&Err));
+        umfMemoryProviderGetLastNativeError(hProvider, &Msg, &Err);
 
         if (Msg) {
             logger::error("UMF failed with: {}", Msg);
         }
 
-        return Err;
+        auto nativeErrorHandlesIt =
+            getNativeErrorHandlers().find(umfMemoryProviderGetName(hProvider));
+        if (nativeErrorHandlesIt != getNativeErrorHandlers().end()) {
+            return nativeErrorHandlesIt->second(Err);
+        } else {
+            return UR_RESULT_ERROR_UNKNOWN;
+        }
     }
     case UMF_RESULT_ERROR_INVALID_ARGUMENT:
         return UR_RESULT_ERROR_INVALID_ARGUMENT;
