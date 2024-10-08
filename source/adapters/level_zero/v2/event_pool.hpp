@@ -29,8 +29,9 @@ namespace v2 {
 class event_pool {
 public:
   // store weak reference to the queue as event_pool is part of the queue
-  event_pool(std::unique_ptr<event_provider> Provider)
-      : provider(std::move(Provider)), mutex(std::make_unique<std::mutex>()){};
+  event_pool(std::unique_ptr<event_provider> Provider, bool profilingEnabled)
+      : provider(std::move(Provider)), mutex(std::make_unique<std::mutex>()),
+        profilingEnabled(profilingEnabled){};
 
   event_pool(event_pool &&other) = default;
   event_pool &operator=(event_pool &&other) = default;
@@ -48,6 +49,8 @@ public:
 
   event_provider *getProvider();
 
+  bool isProfilingEnabled() const;
+
 private:
   std::unique_ptr<event_provider> provider;
 
@@ -55,6 +58,8 @@ private:
   std::vector<ur_event_handle_t_ *> freelist;
 
   std::unique_ptr<std::mutex> mutex;
+
+  bool profilingEnabled;
 };
 
 } // namespace v2

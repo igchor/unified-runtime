@@ -50,4 +50,6 @@ void event_pool::free(ur_event_handle_t_ *event) {
 
 event_provider *event_pool::getProvider() { return provider.get(); }
 
+bool event_pool::isProfilingEnabled() const { return profilingEnabled; }
+
 } // namespace v2

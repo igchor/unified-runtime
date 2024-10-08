@@ -68,6 +68,7 @@ struct ProviderParams {
     ProviderType provider;
     v2::event_type event;
     v2::queue_type queue;
+    bool profilingEnabled;
 };
 
 template <typename T>
@@ -82,7 +83,8 @@ printParams(const testing::TestParamInfo<typename T::ParamType> &info) {
     params_stream << platform_device_name << "__"
                   << provider_to_str(params.provider) << "_"
                   << event_to_str(params.event) << "_"
-                  << queue_to_str(params.queue);
+                  << queue_to_str(params.queue) << "_"
+                  << (params.profilingEnabled ? "profiling" : "no_profiling");
     return params_stream.str();
 }
 
@@ -94,7 +96,8 @@ struct EventPoolTest : public uur::urContextTestWithParam<ProviderParams> {
 
         cache = std::unique_ptr<event_pool_cache>(new event_pool_cache(
             MAX_DEVICES,
-            [this, params](DeviceId) -> std::unique_ptr<event_provider> {
+            [this, params](DeviceId, bool profilingEnabled)
+                -> std::unique_ptr<event_provider> {
                 // normally id would be used to find the appropriate device to create the provider
                 switch (params.provider) {
                 case TEST_PROVIDER_COUNTER:
@@ -102,7 +105,8 @@ struct EventPoolTest : public uur::urContextTestWithParam<ProviderParams> {
                                                               device);
                 case TEST_PROVIDER_NORMAL:
                     return std::make_unique<provider_normal>(
-                        context, device, params.event, params.queue);
+                        context, device, params.event, params.queue,
+                        profilingEnabled);
                 }
                 return nullptr;
             }));
@@ -116,9 +120,10 @@ struct EventPoolTest : public uur::urContextTestWithParam<ProviderParams> {
 };
 
 static ProviderParams test_cases[] = {
-    {TEST_PROVIDER_NORMAL, EVENT_REGULAR, QUEUE_REGULAR},
-    {TEST_PROVIDER_NORMAL, EVENT_COUNTER, QUEUE_REGULAR},
-    {TEST_PROVIDER_NORMAL, EVENT_COUNTER, QUEUE_IMMEDIATE},
+    {TEST_PROVIDER_NORMAL, EVENT_REGULAR, QUEUE_REGULAR, false},
+    {TEST_PROVIDER_NORMAL, EVENT_COUNTER, QUEUE_REGULAR, false},
+    {TEST_PROVIDER_NORMAL, EVENT_COUNTER, QUEUE_IMMEDIATE, false},
+    {TEST_PROVIDER_NORMAL, EVENT_COUNTER, QUEUE_IMMEDIATE, true},
     // TODO: counter provided is not fully unimplemented
     // counter-based provider ignores event and queue type
     //{TEST_PROVIDER_COUNTER, EVENT_COUNTER, QUEUE_IMMEDIATE},
@@ -128,9 +133,9 @@ UUR_TEST_SUITE_P(EventPoolTest, testing::ValuesIn(test_cases),
                  printParams<EventPoolTest>);
 
 TEST_P(EventPoolTest, InvalidDevice) {
-    auto pool = cache->borrow(MAX_DEVICES);
+    auto pool = cache->borrow(MAX_DEVICES, getParam().profilingEnabled);
     ASSERT_EQ(pool, nullptr);
-    pool = cache->borrow(MAX_DEVICES + 10);
+    pool = cache->borrow(MAX_DEVICES + 10, getParam().profilingEnabled);
     ASSERT_EQ(pool, nullptr);
 }
 
@@ -139,7 +144,8 @@ TEST_P(EventPoolTest, Basic) {
         ur_event_handle_t first;
         ze_event_handle_t zeFirst;
         {
-            auto pool = cache->borrow(device->Id.value());
+            auto pool =
+                cache->borrow(device->Id.value(), getParam().profilingEnabled);
 
             first = pool->allocate();
             zeFirst = first->getZeEvent();
@@ -149,7 +155,8 @@ TEST_P(EventPoolTest, Basic) {
         ur_event_handle_t second;
         ze_event_handle_t zeSecond;
         {
-            auto pool = cache->borrow(device->Id.value());
+            auto pool =
+                cache->borrow(device->Id.value(), getParam().profilingEnabled);
 
             second = pool->allocate();
             zeSecond = second->getZeEvent();
@@ -158,6 +165,20 @@ TEST_P(EventPoolTest, Basic) {
         }
         ASSERT_EQ(first, second);
         ASSERT_EQ(zeFirst, zeSecond);
+
+        ur_event_handle_t third;
+        ze_event_handle_t zeThird;
+        {
+            auto pool =
+                cache->borrow(device->Id.value(), !getParam().profilingEnabled);
+
+            third = pool->allocate();
+            zeThird = second->getZeEvent();
+
+            urEventRelease(third);
+        }
+        ASSERT_NE(first, third);
+        ASSERT_NE(zeFirst, zeThird);
     }
 }
 
@@ -167,7 +188,8 @@ TEST_P(EventPoolTest, Threaded) {
     for (int iters = 0; iters < 3; ++iters) {
         for (int th = 0; th < 10; ++th) {
             threads.emplace_back([&] {
-                auto pool = cache->borrow(device->Id.value());
+                auto pool = cache->borrow(device->Id.value(),
+                                          getParam().profilingEnabled);
                 std::vector<ur_event_handle_t> events;
                 for (int i = 0; i < 100; ++i) {
                     events.push_back(pool->allocate());
@@ -185,7 +207,7 @@ TEST_P(EventPoolTest, Threaded) {
 }
 
 TEST_P(EventPoolTest, ProviderNormalUseMostFreePool) {
-    auto pool = cache->borrow(device->Id.value());
+    auto pool = cache->borrow(device->Id.value(), getParam().profilingEnabled);
     std::list<ur_event_handle_t> events;
     for (int i = 0; i < 128; ++i) {
         events.push_back(pool->allocate());
