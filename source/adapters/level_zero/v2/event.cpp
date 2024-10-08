@@ -40,9 +40,29 @@ ur_result_t ur_event_handle_t_::release() {
   if (!RefCount.decrementAndTest())
     return UR_RESULT_SUCCESS;
 
+  if (isTimestamped() && adjustedEventEndTimestamp == 0) {
+    // L0 will write end timestamp to this event some time in the future,
+    // so we can't release it yet.
+    // TODO: delay releasing until the end timestamp is written.
+    return UR_RESULT_SUCCESS;
+  }
+
   pool->free(this);
 
   return UR_RESULT_SUCCESS;
+}
+
+bool ur_event_handle_t_::isTimestamped() const {
+  // If we are recording, the start time of the event will be non-zero.
+  return recordEventStartTimestamp != 0;
+}
+
+bool ur_event_handle_t_::isProfilingEnabled() const {
+  return pool->isProfilingEnabled();
+}
+
+ur_device_handle_t ur_event_handle_t_::getDevice() const {
+  return pool->getProvider()->device();
 }
 
 namespace ur::level_zero {
@@ -83,6 +103,118 @@ ur_result_t urEventGetInfo(ur_event_handle_t hEvent, ur_event_info_t propName,
     logger::error(
         "Unsupported ParamName in urEventGetInfo: ParamName=ParamName={}(0x{})",
         propName, logger::toHex(propName));
+    return UR_RESULT_ERROR_INVALID_VALUE;
+  }
+
+  return UR_RESULT_SUCCESS;
+}
+
+ur_result_t urEventGetProfilingInfo(
+    ur_event_handle_t hEvent, ///< [in] handle of the event object
+    ur_profiling_info_t
+        propName, ///< [in] the name of the profiling property to query
+    size_t
+        propValueSize, ///< [in] size in bytes of the profiling property value
+    void *pPropValue,  ///< [out][optional] value of the profiling property
+    size_t *pPropValueSizeRet ///< [out][optional] pointer to the actual size in
+                              ///< bytes returned in propValue
+) {
+  // The event must either have profiling enabled or be recording timestamps.
+  bool isTimestampedEvent = hEvent->isTimestamped();
+  if (!hEvent->isProfilingEnabled() && !isTimestampedEvent) {
+    return UR_RESULT_ERROR_PROFILING_INFO_NOT_AVAILABLE;
+  }
+
+  ur_device_handle_t hDevice = hEvent->getDevice();
+
+  uint64_t zeTimerResolution = hDevice->ZeDeviceProperties->timerResolution;
+  const uint64_t timestampMaxValue = hDevice->getTimestampMask();
+
+  UrReturnHelper returnValue(propValueSize, pPropValue, pPropValueSizeRet);
+
+  // For timestamped events we have the timestamps ready directly on the event
+  // handle, so we short-circuit the return.
+  if (isTimestampedEvent) {
+    uint64_t contextStartTime = hEvent->recordEventStartTimestamp;
+    switch (propName) {
+    case UR_PROFILING_INFO_COMMAND_QUEUED:
+    case UR_PROFILING_INFO_COMMAND_SUBMIT:
+      return returnValue(contextStartTime);
+    case UR_PROFILING_INFO_COMMAND_END:
+    case UR_PROFILING_INFO_COMMAND_START: {
+      // If adjustedEventEndTimestamp on the event is non-zero it means it has
+      // collected the result of the queue already. In that case it has been
+      // adjusted and is ready for immediate return.
+      if (hEvent->adjustedEventEndTimestamp)
+        return returnValue(hEvent->adjustedEventEndTimestamp);
+
+      // End time needs to be adjusted for resolution and valid bits.
+      uint64_t contextEndTime =
+          (hEvent->recordEventEndTimestamp & timestampMaxValue) *
+          zeTimerResolution;
+
+      // If the result is 0, we have not yet gotten results back and so we just
+      // return it.
+      if (contextEndTime == 0)
+        return returnValue(contextEndTime);
+
+      // Handle a possible wrap-around (the underlying HW counter is < 64-bit).
+      // Note, it will not report correct time if there were multiple wrap
+      // arounds, and the longer term plan is to enlarge the capacity of the
+      // HW timestamps.
+      if (contextEndTime < contextStartTime)
+        contextEndTime += timestampMaxValue * zeTimerResolution;
+
+      // Now that we have the result, there is no need to keep it in the queue
+      // anymore, so we cache it on the event and evict the record from the
+      // queue.
+      hEvent->adjustedEventEndTimestamp = contextEndTime;
+      return returnValue(contextEndTime);
+    }
+    default:
+      logger::error("urEventGetProfilingInfo: not supported ParamName");
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+  }
+
+  ze_kernel_timestamp_result_t tsResult;
+
+  switch (propName) {
+  case UR_PROFILING_INFO_COMMAND_START: {
+    ZE2UR_CALL(zeEventQueryKernelTimestamp, (hEvent->getZeEvent(), &tsResult));
+    uint64_t contextStartTime =
+        (tsResult.global.kernelStart & timestampMaxValue) * zeTimerResolution;
+    return returnValue(contextStartTime);
+  }
+  case UR_PROFILING_INFO_COMMAND_END: {
+    ZE2UR_CALL(zeEventQueryKernelTimestamp, (hEvent->getZeEvent(), &tsResult));
+
+    uint64_t contextStartTime =
+        (tsResult.global.kernelStart & timestampMaxValue);
+    uint64_t contextEndTime = (tsResult.global.kernelEnd & timestampMaxValue);
+
+    //
+    // Handle a possible wrap-around (the underlying HW counter is < 64-bit).
+    // Note, it will not report correct time if there were multiple wrap
+    // arounds, and the longer term plan is to enlarge the capacity of the
+    // HW timestamps.
+    //
+    if (contextEndTime <= contextStartTime) {
+      contextEndTime += timestampMaxValue;
+    }
+    contextEndTime *= zeTimerResolution;
+    return returnValue(contextEndTime);
+  }
+  case UR_PROFILING_INFO_COMMAND_QUEUED:
+  case UR_PROFILING_INFO_COMMAND_SUBMIT:
+    // Note: No users for this case
+    // The "command_submit" time is implemented by recording submission
+    // timestamp with a call to urDeviceGetGlobalTimestamps before command
+    // enqueue.
+    //
+    return returnValue(uint64_t{0});
+  default:
+    logger::error("urEventGetProfilingInfo: not supported ParamName");
     return UR_RESULT_ERROR_INVALID_VALUE;
   }
 

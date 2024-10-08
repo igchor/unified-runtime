@@ -26,7 +26,7 @@ static constexpr int EVENTS_BURST = 64;
 
 provider_pool::provider_pool(ur_context_handle_t context,
                              ur_device_handle_t device, event_type events,
-                             queue_type queue) {
+                             queue_type queue, bool profilingEnabled) {
   ZeStruct<ze_event_pool_desc_t> desc;
   desc.count = EVENTS_BURST;
   desc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
@@ -40,6 +40,10 @@ provider_pool::provider_pool(ur_context_handle_t context,
             ? ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_IMMEDIATE
             : ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_NON_IMMEDIATE;
     desc.pNext = &counterBasedExt;
+  }
+
+  if (profilingEnabled) {
+    desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
   }
 
   ZE2UR_CALL_THROWS(zeEventPoolCreate,
@@ -72,7 +76,7 @@ size_t provider_pool::nfree() const { return freelist.size(); }
 
 std::unique_ptr<provider_pool> provider_normal::createProviderPool() {
   return std::make_unique<provider_pool>(urContext, urDevice, producedType,
-                                         queueType);
+                                         queueType, profilingEnabled);
 }
 
 event_allocation provider_normal::allocate() {

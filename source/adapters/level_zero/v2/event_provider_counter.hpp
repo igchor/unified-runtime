@@ -34,6 +34,7 @@ typedef ze_result_t (*zexCounterBasedEventCreate)(
 
 class provider_counter : public event_provider {
 public:
+  // TODO: does this provider support profiling?
   provider_counter(ur_platform_handle_t platform, ur_context_handle_t,
                    ur_device_handle_t);
 

@@ -33,6 +33,20 @@ public:
   ur_result_t retain();
   ur_result_t release();
 
+  // Tells if this event was created as a timestamp event, allowing profiling
+  // info even if profiling is not enabled.
+  bool isTimestamped() const;
+
+  // Tells if this event comes from a pool that has profiling enabled.
+  bool isProfilingEnabled() const;
+
+  // Device associated with this event
+  ur_device_handle_t getDevice() const;
+
+  uint64_t recordEventStartTimestamp;
+  uint64_t recordEventEndTimestamp;
+  uint64_t adjustedEventEndTimestamp;
+
 private:
   v2::event_type type;
   v2::raii::cache_borrowed_event zeEvent;

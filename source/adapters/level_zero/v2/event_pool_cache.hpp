@@ -32,18 +32,23 @@ using cache_borrowed_event_pool =
 
 class event_pool_cache {
 public:
-  using ProviderCreateFunc =
-      std::function<std::unique_ptr<event_provider>(DeviceId)>;
+  using ProviderCreateFunc = std::function<std::unique_ptr<event_provider>(
+      DeviceId, bool profilingEnabled)>;
 
   event_pool_cache(size_t max_devices, ProviderCreateFunc);
   ~event_pool_cache();
 
-  raii::cache_borrowed_event_pool borrow(DeviceId);
+  raii::cache_borrowed_event_pool borrow(DeviceId, bool profilingEnabled);
 
 private:
   ur_mutex mutex;
   ProviderCreateFunc providerCreate;
-  std::vector<std::vector<std::unique_ptr<event_pool>>> pools;
+
+  using per_profiling_events_vec = std::vector<std::unique_ptr<event_pool>>;
+  using per_device_events_vec = std::vector<per_profiling_events_vec>;
+  using pools_vec = std::vector<per_device_events_vec>;
+
+  pools_vec pools;
 };
 
 } // namespace v2
