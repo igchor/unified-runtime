@@ -187,7 +187,6 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueKernelLaunch(
   ZE2UR_CALL(zeKernelSetGroupSize, (hZeKernel, WG[0], WG[1], WG[2]));
 
   auto signalEvent = getSignalEvent(phEvent);
-
   auto [pWaitEvents, numWaitEvents] =
       getWaitListView(phEventWaitList, numEventsInWaitList);
 
@@ -452,7 +451,6 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMFill(
   std::scoped_lock<ur_shared_mutex> Lock(this->Mutex);
 
   auto signalEvent = getSignalEvent(phEvent);
-
   auto [pWaitEvents, numWaitEvents] =
       getWaitListView(phEventWaitList, numEventsInWaitList);
 
@@ -477,7 +475,6 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMMemcpy(
   std::scoped_lock<ur_shared_mutex> Lock(this->Mutex);
 
   auto signalEvent = getSignalEvent(phEvent);
-
   auto [pWaitEvents, numWaitEvents] =
       getWaitListView(phEventWaitList, numEventsInWaitList);
 
@@ -502,7 +499,6 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMPrefetch(
   std::scoped_lock<ur_shared_mutex> Lock(this->Mutex);
 
   auto signalEvent = getSignalEvent(phEvent);
-
   auto [pWaitEvents, numWaitEvents] =
       getWaitListView(phEventWaitList, numEventsInWaitList);
 
@@ -515,7 +511,6 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMPrefetch(
              (handler.commandList.get(), pMem, size));
   ZE2UR_CALL(zeCommandListAppendSignalEvent,
              (handler.commandList.get(), signalEvent));
-
 
   return UR_RESULT_SUCCESS;
 }
@@ -531,7 +526,6 @@ ur_queue_immediate_in_order_t::enqueueUSMAdvise(const void *pMem, size_t size,
   std::scoped_lock<ur_shared_mutex> Lock(this->Mutex);
 
   auto signalEvent = getSignalEvent(phEvent);
-
   auto [pWaitEvents, numWaitEvents] = getWaitListView(nullptr, 0);
 
   if (pWaitEvents) {
