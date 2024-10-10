@@ -13,6 +13,15 @@
 
 #include "../device.hpp"
 
+typedef struct _zex_intel_queue_copy_operations_offload_hint_exp_desc_t {
+    ze_structure_type_t stype;    ///< [in] type of this structure
+    const void *pNext;            ///< [in][optional] must be null or a pointer to an extension-specific
+                                  ///< structure (i.e. contains stype and pNext).
+    ze_bool_t copyOffloadEnabled; ///< [in] If set, try to offload copy operations to different engines. Applicable only for compute queues.
+                                  ///< This is only a hint. Driver may ignore it per append call, based on platform capabilities or internal heuristics.
+                                  ///< If not set, driver will follow default behaviour. Copy operations will be submitted to same engine as compute operations.
+} zex_intel_queue_copy_operations_offload_hint_exp_desc_t;
+
 bool v2::immediate_command_list_descriptor_t::operator==(
     const immediate_command_list_descriptor_t &rhs) const {
   return ZeDevice == rhs.ZeDevice && IsInOrder == rhs.IsInOrder &&
@@ -58,6 +67,9 @@ command_list_cache_t::createCommandList(const command_list_descriptor_t &desc) {
       QueueDesc.flags |= ZE_COMMAND_QUEUE_FLAG_EXPLICIT_ONLY;
       QueueDesc.index = ImmCmdDesc->Index.value();
     }
+    zex_intel_queue_copy_operations_offload_hint_exp_desc_t offload_desc{};
+    offload_desc.copyOffloadEnabled = true;
+    QueueDesc.pNext = &offload_desc;
     ZE2UR_CALL_THROWS(
         zeCommandListCreateImmediate,
         (ZeContext, ImmCmdDesc->ZeDevice, &QueueDesc, &ZeCommandList));
