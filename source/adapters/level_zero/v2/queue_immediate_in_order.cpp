@@ -501,23 +501,21 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMPrefetch(
 
   std::scoped_lock<ur_shared_mutex> Lock(this->Mutex);
 
-  auto handler = getCommandListHandlerForCompute();
-  auto signalEvent = getSignalEvent(handler, phEvent);
+  auto signalEvent = getSignalEvent(phEvent);
 
   auto [pWaitEvents, numWaitEvents] =
-      getWaitListView(phEventWaitList, numEventsInWaitList, handler);
+      getWaitListView(phEventWaitList, numEventsInWaitList);
 
   if (pWaitEvents) {
-    ZE2UR_CALL(zeCommandListAppendBarrier, (handler->commandList.get(), nullptr,
+    ZE2UR_CALL(zeCommandListAppendBarrier, (handler.commandList.get(), nullptr,
                                             numWaitEvents, pWaitEvents));
   }
   // TODO: figure out how to translate "flags"
   ZE2UR_CALL(zeCommandListAppendMemoryPrefetch,
-             (handler->commandList.get(), pMem, size));
+             (handler.commandList.get(), pMem, size));
   ZE2UR_CALL(zeCommandListAppendSignalEvent,
-             (handler->commandList.get(), signalEvent));
+             (handler.commandList.get(), signalEvent));
 
-  lastHandler = handler;
 
   return UR_RESULT_SUCCESS;
 }
@@ -532,24 +530,21 @@ ur_queue_immediate_in_order_t::enqueueUSMAdvise(const void *pMem, size_t size,
 
   std::scoped_lock<ur_shared_mutex> Lock(this->Mutex);
 
-  auto handler = getCommandListHandlerForCompute();
-  auto signalEvent = getSignalEvent(handler, phEvent);
+  auto signalEvent = getSignalEvent(phEvent);
 
-  auto [pWaitEvents, numWaitEvents] = getWaitListView(nullptr, 0, handler);
+  auto [pWaitEvents, numWaitEvents] = getWaitListView(nullptr, 0);
 
   if (pWaitEvents) {
-    ZE2UR_CALL(zeCommandListAppendBarrier, (handler->commandList.get(), nullptr,
+    ZE2UR_CALL(zeCommandListAppendBarrier, (handler.commandList.get(), nullptr,
                                             numWaitEvents, pWaitEvents));
   }
 
   // TODO: figure out how to translate "flags"
   ZE2UR_CALL(zeCommandListAppendMemAdvise,
-             (handler->commandList.get(), this->hDevice->ZeDevice, pMem, size,
+             (handler.commandList.get(), this->hDevice->ZeDevice, pMem, size,
               zeAdvice));
   ZE2UR_CALL(zeCommandListAppendSignalEvent,
-             (handler->commandList.get(), signalEvent));
-
-  lastHandler = handler;
+             (handler.commandList.get(), signalEvent));
 
   return UR_RESULT_SUCCESS;
 }
