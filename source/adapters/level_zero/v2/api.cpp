@@ -18,20 +18,6 @@
 std::mutex ZeCall::GlobalLock;
 
 namespace ur::level_zero {
-ur_result_t urContextGetNativeHandle(ur_context_handle_t hContext,
-                                     ur_native_handle_t *phNativeContext) {
-  logger::error("{} function not implemented!", __FUNCTION__);
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
-}
-
-ur_result_t urContextCreateWithNativeHandle(
-    ur_native_handle_t hNativeContext, ur_adapter_handle_t hAdapter,
-    uint32_t numDevices, const ur_device_handle_t *phDevices,
-    const ur_context_native_properties_t *pProperties,
-    ur_context_handle_t *phContext) {
-  logger::error("{} function not implemented!", __FUNCTION__);
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
-}
 
 ur_result_t
 urContextSetExtendedDeleter(ur_context_handle_t hContext,
