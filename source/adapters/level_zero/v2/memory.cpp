@@ -358,4 +358,11 @@ ur_result_t urMemRelease(ur_mem_handle_t hMem) {
   }
   return UR_RESULT_SUCCESS;
 }
+
+ur_result_t urMemGetNativeHandle(ur_mem_handle_t hMem,
+                                 ur_device_handle_t hDevice,
+                                 ur_native_handle_t *phNativeMem) {
+  logger::error("{} function not implemented!", __FUNCTION__);
+  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+}
 } // namespace ur::level_zero

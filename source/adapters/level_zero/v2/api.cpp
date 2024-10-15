@@ -35,13 +35,6 @@ ur_result_t urMemImageCreate(ur_context_handle_t hContext, ur_mem_flags_t flags,
   return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
 }
 
-ur_result_t urMemGetNativeHandle(ur_mem_handle_t hMem,
-                                 ur_device_handle_t hDevice,
-                                 ur_native_handle_t *phNativeMem) {
-  logger::error("{} function not implemented!", __FUNCTION__);
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
-}
-
 ur_result_t urMemImageCreateWithNativeHandle(
     ur_native_handle_t hNativeMem, ur_context_handle_t hContext,
     const ur_image_format_t *pImageFormat, const ur_image_desc_t *pImageDesc,
@@ -181,22 +174,6 @@ urKernelSetArgSampler(ur_kernel_handle_t hKernel, uint32_t argIndex,
 ur_result_t urKernelSetSpecializationConstants(
     ur_kernel_handle_t hKernel, uint32_t count,
     const ur_specialization_constant_info_t *pSpecConstants) {
-  logger::error("{} function not implemented!", __FUNCTION__);
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
-}
-
-ur_result_t urKernelGetNativeHandle(ur_kernel_handle_t hKernel,
-                                    ur_native_handle_t *phNativeKernel) {
-  logger::error("{} function not implemented!", __FUNCTION__);
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
-}
-
-ur_result_t
-urKernelCreateWithNativeHandle(ur_native_handle_t hNativeKernel,
-                               ur_context_handle_t hContext,
-                               ur_program_handle_t hProgram,
-                               const ur_kernel_native_properties_t *pProperties,
-                               ur_kernel_handle_t *phKernel) {
   logger::error("{} function not implemented!", __FUNCTION__);
   return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
 }
