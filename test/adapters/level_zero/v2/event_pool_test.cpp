@@ -26,6 +26,14 @@ using namespace v2;
 
 static constexpr size_t MAX_DEVICES = 10;
 
+// mock necessary functions from context, we can't pull in entire context implementation due to
+// a lot of other dependencies
+std::vector<ur_device_handle_t> mockVec{};
+const std::vector<ur_device_handle_t> &
+ur_context_handle_t_::getDevices() const {
+    return mockVec;
+}
+
 enum ProviderType {
     TEST_PROVIDER_NORMAL,
     TEST_PROVIDER_COUNTER,
@@ -98,8 +106,10 @@ struct EventPoolTest : public uur::urContextTestWithParam<ProviderParams> {
 
         auto params = getParam();
 
+        mockVec.push_back(device);
+
         cache = std::unique_ptr<event_pool_cache>(new event_pool_cache(
-            MAX_DEVICES,
+            nullptr, MAX_DEVICES,
             [this, params](DeviceId, event_flags_t flags)
                 -> std::unique_ptr<event_provider> {
                 // normally id would be used to find the appropriate device to create the provider
@@ -109,7 +119,7 @@ struct EventPoolTest : public uur::urContextTestWithParam<ProviderParams> {
                                                               device);
                 case TEST_PROVIDER_NORMAL:
                     return std::make_unique<provider_normal>(
-                        context, device, params.queue, flags);
+                        context, params.queue, flags);
                 }
                 return nullptr;
             }));
@@ -150,8 +160,10 @@ TEST_P(EventPoolTest, Basic) {
         {
             auto pool = cache->borrow(device->Id.value(), getParam().flags);
 
-            first = pool->allocate(reinterpret_cast<ur_queue_handle_t>(0x1),
-                                   UR_COMMAND_KERNEL_LAUNCH);
+            first = pool->allocate();
+            first->resetQueueAndCommand(
+                reinterpret_cast<ur_queue_handle_t>(0x1),
+                UR_COMMAND_KERNEL_LAUNCH);
             zeFirst = first->getZeEvent();
 
             urEventRelease(first);
@@ -161,8 +173,10 @@ TEST_P(EventPoolTest, Basic) {
         {
             auto pool = cache->borrow(device->Id.value(), getParam().flags);
 
-            second = pool->allocate(reinterpret_cast<ur_queue_handle_t>(0x1),
-                                    UR_COMMAND_KERNEL_LAUNCH);
+            second = pool->allocate();
+            first->resetQueueAndCommand(
+                reinterpret_cast<ur_queue_handle_t>(0x1),
+                UR_COMMAND_KERNEL_LAUNCH);
             zeSecond = second->getZeEvent();
 
             urEventRelease(second);
@@ -181,9 +195,10 @@ TEST_P(EventPoolTest, Threaded) {
                 auto pool = cache->borrow(device->Id.value(), getParam().flags);
                 std::vector<ur_event_handle_t> events;
                 for (int i = 0; i < 100; ++i) {
-                    events.push_back(
-                        pool->allocate(reinterpret_cast<ur_queue_handle_t>(0x1),
-                                       UR_COMMAND_KERNEL_LAUNCH));
+                    events.push_back(pool->allocate());
+                    events.back()->resetQueueAndCommand(
+                        reinterpret_cast<ur_queue_handle_t>(0x1),
+                        UR_COMMAND_KERNEL_LAUNCH);
                 }
                 for (int i = 0; i < 100; ++i) {
                     urEventRelease(events[i]);
@@ -201,9 +216,10 @@ TEST_P(EventPoolTest, ProviderNormalUseMostFreePool) {
     auto pool = cache->borrow(device->Id.value(), getParam().flags);
     std::list<ur_event_handle_t> events;
     for (int i = 0; i < 128; ++i) {
-        events.push_back(
-            pool->allocate(reinterpret_cast<ur_queue_handle_t>(0x1),
-                           UR_COMMAND_KERNEL_LAUNCH));
+        auto event = pool->allocate();
+        event->resetQueueAndCommand(reinterpret_cast<ur_queue_handle_t>(0x1),
+                                    UR_COMMAND_KERNEL_LAUNCH);
+        events.push_back(event);
     }
     auto frontZeHandle = events.front()->getZeEvent();
     for (int i = 0; i < 8; ++i) {
@@ -211,7 +227,8 @@ TEST_P(EventPoolTest, ProviderNormalUseMostFreePool) {
         events.pop_front();
     }
     for (int i = 0; i < 8; ++i) {
-        auto e = pool->allocate(reinterpret_cast<ur_queue_handle_t>(0x1),
+        auto e = pool->allocate();
+        e->resetQueueAndCommand(reinterpret_cast<ur_queue_handle_t>(0x1),
                                 UR_COMMAND_KERNEL_LAUNCH);
         events.push_back(e);
     }
