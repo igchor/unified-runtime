@@ -95,6 +95,7 @@ ur_event_handle_t_::ur_event_handle_t_(ur_context_handle_t hContext,
 
 void ur_event_handle_t_::resetQueueAndCommand(ur_queue_handle_t hQueue,
                                               ur_command_t commandType) {
+  resetted = false;
   this->hQueue = hQueue;
   this->commandType = commandType;
   profilingData = event_profiling_data_t(hZeEvent);
@@ -125,6 +126,7 @@ void ur_event_handle_t_::reset() {
   if (!(flags & v2::EVENT_FLAGS_COUNTER)) {
     zeEventHostReset(hZeEvent);
   }
+  resetted = true;
 }
 
 ze_event_handle_t ur_event_handle_t_::getZeEvent() const {
@@ -192,7 +194,7 @@ ur_pooled_event_t::ur_pooled_event_t(
       zeEvent(std::move(eventAllocation)), pool(pool) {}
 
 ur_result_t ur_pooled_event_t::forceRelease() {
-  pool->free(this);
+  pool->free(this, false);
   return UR_RESULT_SUCCESS;
 }
 

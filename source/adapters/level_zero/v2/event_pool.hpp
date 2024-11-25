@@ -40,11 +40,22 @@ public:
   event_pool(const event_pool &) = delete;
   event_pool &operator=(const event_pool &) = delete;
 
+  ~event_pool() {
+    for (auto &event : executing) {
+      zeEventHostSynchronize(event->getZeEvent(), UINT64_MAX);
+    }
+  }
+
   // Allocate an event from the pool. Thread safe.
   ur_pooled_event_t *allocate();
 
   // Free an event back to the pool. Thread safe.
-  void free(ur_pooled_event_t *event);
+  void free(ur_pooled_event_t *event, bool completed);
+
+  // Move events from the executing list to the freelist (if they are
+  // completed). Thread safe.
+  void cleanupExecuting();
+  void forceCleanupExecuting();
 
   event_provider *getProvider() const;
   event_flags_t getFlags() const;
@@ -54,6 +65,7 @@ private:
   std::unique_ptr<event_provider> provider;
 
   std::deque<ur_pooled_event_t> events;
+  std::deque<ur_pooled_event_t *> executing;
   std::vector<ur_pooled_event_t *> freelist;
 
   std::unique_ptr<std::mutex> mutex;
