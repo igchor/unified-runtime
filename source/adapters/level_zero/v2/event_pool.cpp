@@ -17,6 +17,14 @@ namespace v2 {
 
 static constexpr size_t EVENTS_BURST = 64;
 
+static uint64_t CHECK_EXECUTING = []() {
+  return getenv_to_unsigned("UR_L0_V2_CHECK_EXECUTING").value_or(16);
+}();
+
+static uint64_t EVENT_POOL_CLEANUP_SIZE = []() {
+  return getenv_to_unsigned("UR_L0_V2_EVENT_POOL_CLEANUP_SIZE").value_or(1000);
+}();
+
 ur_pooled_event_t *event_pool::allocate() {
   TRACK_SCOPE_LATENCY("event_pool::allocate");
 
@@ -39,13 +47,53 @@ ur_pooled_event_t *event_pool::allocate() {
   return event;
 }
 
-void event_pool::free(ur_pooled_event_t *event) {
+void event_pool::forceCleanupExecuting() {
+  TRACK_SCOPE_LATENCY("event_pool::forceCleanupExecuting");
+
+  std::unique_lock<std::mutex> lock(*mutex);
+
+  for (auto &event : executing) {
+    event->reset();
+    freelist.push_back(event);
+  }
+
+  executing.clear();
+}
+
+void event_pool::cleanupExecuting() {
+  TRACK_SCOPE_LATENCY("event_pool::cleanupExecuting");
+
+  std::unique_lock<std::mutex> lock(*mutex);
+
+  if (executing.size() < EVENT_POOL_CLEANUP_SIZE) {
+    return;
+  }
+
+  size_t completed = 0;
+  for (size_t i = 0; i < std::min(CHECK_EXECUTING, executing.size()); i++) {
+    if (zeEventQueryStatus(executing[i]->getZeEvent()) == ZE_RESULT_SUCCESS) {
+      executing[i]->reset();
+      freelist.push_back(executing[i]);
+      completed++;
+    } else {
+      break;
+    }
+  }
+
+  executing.erase(executing.begin(), executing.begin() + completed);
+}
+
+void event_pool::free(ur_pooled_event_t *event, bool completed) {
   TRACK_SCOPE_LATENCY("event_pool::free");
 
   std::unique_lock<std::mutex> lock(*mutex);
 
-  event->reset();
-  freelist.push_back(event);
+  if (completed) {
+    event->reset();
+    freelist.push_back(event);
+  } else {
+    executing.push_back(event);
+  }
 
   // The event is still in the pool, so we need to increment the refcount
   assert(event->RefCount.load() == 0);

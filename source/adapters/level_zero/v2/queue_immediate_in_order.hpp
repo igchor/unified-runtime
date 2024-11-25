@@ -32,6 +32,7 @@ struct ur_command_list_handler_t {
                             bool ownZeHandle);
 
   raii::command_list_unique_handle commandList;
+  ur_event_handle_t lastEvent = nullptr;
 };
 
 struct ur_queue_immediate_in_order_t : _ur_object, public ur_queue_handle_t_ {
@@ -84,7 +85,7 @@ public:
                                 ur_native_handle_t, ur_queue_flags_t,
                                 bool ownZeQueue);
 
-  ~ur_queue_immediate_in_order_t() {}
+  ~ur_queue_immediate_in_order_t() { queueFinish(); }
 
   ur_result_t queueGetInfo(ur_queue_info_t propName, size_t propSize,
                            void *pPropValue, size_t *pPropSizeRet) override;

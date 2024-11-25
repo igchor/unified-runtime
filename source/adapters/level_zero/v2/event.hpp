@@ -97,6 +97,8 @@ public:
   uint64_t getEventStartTimestmap() const;
   uint64_t getEventEndTimestamp();
 
+  bool isResetted() const { return resetted; }
+
 protected:
   ur_context_handle_t hContext;
 
@@ -110,6 +112,8 @@ protected:
 
   v2::event_flags_t flags;
   event_profiling_data_t profilingData;
+
+  bool resetted = false;
 };
 
 struct ur_pooled_event_t : ur_event_handle_t_ {

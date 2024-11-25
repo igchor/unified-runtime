@@ -53,8 +53,6 @@ ur_context_handle_t_::ur_context_handle_t_(ze_context_handle_t hContext,
                      [context = this, platform = phDevices[0]->Platform](
                          DeviceId deviceId, v2::event_flags_t flags)
                          -> std::unique_ptr<v2::event_provider> {
-                       assert((flags & v2::EVENT_FLAGS_COUNTER) != 0);
-
                        std::ignore = deviceId;
                        std::ignore = platform;
 
