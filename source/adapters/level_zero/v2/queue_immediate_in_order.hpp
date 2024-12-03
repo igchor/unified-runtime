@@ -31,11 +31,8 @@ struct ur_command_list_handler_t {
   ur_command_list_handler_t(ze_command_list_handle_t hZeCommandList,
                             bool ownZeHandle);
 
-  void cleanupEvents(bool force = false);
-
   raii::command_list_unique_handle commandList;
-  ur_event_handle_t lastEvent = nullptr;
-
+  std::deque<ur_event_handle_t> signals;
   std::deque<ur_event_handle_t> executing;
 };
 
@@ -44,6 +41,8 @@ private:
   ur_context_handle_t hContext;
   ur_device_handle_t hDevice;
   ur_queue_flags_t flags;
+
+  size_t counter = 0;
 
   raii::cache_borrowed_event_pool eventPool;
 

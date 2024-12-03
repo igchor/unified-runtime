@@ -149,7 +149,7 @@ ur_result_t ur_event_handle_t_::release() {
     return UR_RESULT_SUCCESS;
 
   // Need to take a lock before checking if the event is timestamped.
-  std::unique_lock<ur_shared_mutex> lock(Mutex);
+  // std::unique_lock<ur_shared_mutex> lock(Mutex);
 
   if (isTimestamped() && !getEventEndTimestamp()) {
     // L0 will write end timestamp to this event some time in the future,
@@ -161,7 +161,7 @@ ur_result_t ur_event_handle_t_::release() {
 
   // Need to unlock now, as forceRelease might deallocate memory backing
   // the Mutex.
-  lock.unlock();
+  // lock.unlock();
 
   return this->forceRelease();
 }

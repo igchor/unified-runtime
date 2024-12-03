@@ -89,6 +89,10 @@ public:
     this->completed = completed;
   }
 
+  bool isCompleted() const {
+    return completed;
+  }
+
   // Record the start timestamp of the event, to be obtained by
   // urEventGetProfilingInfo. resetQueueAndCommand should be
   // called before this.
