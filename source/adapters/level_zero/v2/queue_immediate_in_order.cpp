@@ -163,6 +163,16 @@ void ur_queue_immediate_in_order_t::deferEventFree(ur_event_handle_t hEvent) {
   deferredEvents.push_back(hEvent);
 }
 
+uint64_t ur_queue_immediate_in_order_t::getCurrentEpochUnlocked() {
+  return epoch;
+}
+
+void ur_queue_immediate_in_order_t::deferKernelFree(
+    ur_kernel_handle_t hKernel) {
+  std::unique_lock<ur_shared_mutex> lock(this->Mutex);
+  deferredKernels.push_back(hKernel);
+}
+
 ur_result_t ur_queue_immediate_in_order_t::queueGetNativeHandle(
     ur_queue_native_desc_t *pDesc, ur_native_handle_t *phNativeQueue) {
   std::ignore = pDesc;
@@ -182,11 +192,19 @@ ur_result_t ur_queue_immediate_in_order_t::queueFinish() {
   ZE2UR_CALL(zeCommandListHostSynchronize,
              (handler.commandList.get(), UINT64_MAX));
 
+  epoch++;
+
   // Free deferred events
   for (auto &hEvent : deferredEvents) {
     hEvent->releaseDeferred();
   }
   deferredEvents.clear();
+
+  // Free deferred kernels
+  for (auto &hKernel : deferredKernels) {
+    hKernel->releaseDeferred();
+  }
+  deferredKernels.clear();
 
   return UR_RESULT_SUCCESS;
 }
@@ -231,9 +249,9 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueKernelLaunch(
     memoryMigrated = true;
   };
 
-  UR_CALL(hKernel->prepareForSubmission(hContext, hDevice, pGlobalWorkOffset,
-                                        workDim, WG[0], WG[1], WG[2],
-                                        memoryMigrate));
+  UR_CALL(hKernel->prepareForSubmission(hContext, this, hDevice,
+                                        pGlobalWorkOffset, workDim, WG[0],
+                                        WG[1], WG[2], memoryMigrate));
 
   if (memoryMigrated) {
     // If memory was migrated, we don't need to pass the wait list to
@@ -1011,9 +1029,9 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueCooperativeKernelLaunchExp(
     memoryMigrated = true;
   };
 
-  UR_CALL(hKernel->prepareForSubmission(hContext, hDevice, pGlobalWorkOffset,
-                                        workDim, WG[0], WG[1], WG[2],
-                                        memoryMigrate));
+  UR_CALL(hKernel->prepareForSubmission(hContext, this, hDevice,
+                                        pGlobalWorkOffset, workDim, WG[0],
+                                        WG[1], WG[2], memoryMigrate));
 
   if (memoryMigrated) {
     // If memory was migrated, we don't need to pass the wait list to

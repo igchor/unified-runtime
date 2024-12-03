@@ -27,6 +27,10 @@ struct ur_queue_handle_t_ {
     virtual ~ur_queue_handle_t_();
 
     virtual void deferEventFree(ur_event_handle_t hEvent) = 0;
+    virtual void deferKernelFree(ur_kernel_handle_t hKernel) = 0;
+
+    // return current epoch - equal to number of queueFinish() calls
+    virtual uint64_t getCurrentEpochUnlocked() = 0;
 
     %for obj in th.get_queue_related_functions(specs, n, tags):
     virtual ${x}_result_t ${th.transform_queue_related_function_name(n, tags, obj, format=["type"])} = 0;

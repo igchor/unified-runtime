@@ -47,6 +47,9 @@ private:
   std::vector<ze_event_handle_t> waitList;
 
   std::vector<ur_event_handle_t> deferredEvents;
+  std::vector<ur_kernel_handle_t> deferredKernels;
+
+  uint64_t epoch = 0;
 
   std::pair<ze_event_handle_t *, uint32_t>
   getWaitListView(const ur_event_handle_t *phWaitEvents,
@@ -56,6 +59,10 @@ private:
                                    ur_command_t commandType);
 
   void deferEventFree(ur_event_handle_t hEvent) override;
+  void deferKernelFree(ur_kernel_handle_t hKernel) override;
+
+  // return current epoch - equal to number of queueFinish() calls
+  uint64_t getCurrentEpochUnlocked() override;
 
   ur_result_t enqueueRegionCopyUnlocked(
       ur_mem_handle_t src, ur_mem_handle_t dst, bool blocking,

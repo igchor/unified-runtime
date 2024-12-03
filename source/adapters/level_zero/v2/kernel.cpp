@@ -13,6 +13,7 @@
 #include "context.hpp"
 #include "kernel.hpp"
 #include "memory.hpp"
+#include "queue_api.hpp"
 
 #include "../device.hpp"
 #include "../helpers/kernel_helpers.hpp"
@@ -72,7 +73,7 @@ ur_kernel_handle_t_::ur_kernel_handle_t_(
     ur_native_handle_t hNativeKernel, ur_program_handle_t hProgram,
     ur_context_handle_t context,
     const ur_kernel_native_properties_t *pProperties)
-    : hProgram(hProgram),
+    : queueSubmitEpoch(0), hProgram(hProgram),
       deviceKernels(context ? context->getPlatform()->getNumDevices() : 0) {
   ur::level_zero::urProgramRetain(hProgram);
 
@@ -93,7 +94,9 @@ ur_kernel_handle_t_::ur_kernel_handle_t_(
   completeInitialization();
 }
 
-ur_result_t ur_kernel_handle_t_::release() {
+ur_result_t ur_kernel_handle_t_::releaseDeferred() {
+  assert(RefCount.load() == 0);
+
   // manually release kernels to allow errors to be propagated
   for (auto &singleDeviceKernelOpt : deviceKernels) {
     if (singleDeviceKernelOpt.has_value()) {
@@ -101,9 +104,25 @@ ur_result_t ur_kernel_handle_t_::release() {
     }
   }
 
-  UR_CALL_THROWS(ur::level_zero::urProgramRelease(hProgram));
+  UR_CALL(ur::level_zero::urProgramRelease(hProgram));
+
+  delete this;
 
   return UR_RESULT_SUCCESS;
+}
+
+ur_result_t ur_kernel_handle_t_::release() {
+  if (!RefCount.decrementAndTest())
+    return UR_RESULT_SUCCESS;
+
+  if (queueSubmitEpoch == hQueue->getCurrentEpochUnlocked()) {
+    hQueue->deferKernelFree(this);
+    return UR_RESULT_SUCCESS;
+  }
+
+  assert(queueSubmitEpoch > hQueue->getCurrentEpochUnlocked());
+
+  return releaseDeferred();
 }
 
 void ur_kernel_handle_t_::completeInitialization() {
@@ -266,10 +285,10 @@ ur_result_t ur_kernel_handle_t_::setExecInfo(ur_kernel_exec_info_t propName,
 
 // Perform any required allocations and set the kernel arguments.
 ur_result_t ur_kernel_handle_t_::prepareForSubmission(
-    ur_context_handle_t hContext, ur_device_handle_t hDevice,
-    const size_t *pGlobalWorkOffset, uint32_t workDim, uint32_t groupSizeX,
-    uint32_t groupSizeY, uint32_t groupSizeZ,
-    std::function<void(void *, void *, size_t)> migrate) {
+    ur_context_handle_t hContext, ur_queue_handle_t hQueue,
+    ur_device_handle_t hDevice, const size_t *pGlobalWorkOffset,
+    uint32_t workDim, uint32_t groupSizeX, uint32_t groupSizeY,
+    uint32_t groupSizeZ, std::function<void(void *, void *, size_t)> migrate) {
   auto hZeKernel = getZeHandle(hDevice);
 
   if (pGlobalWorkOffset != NULL) {
@@ -286,6 +305,9 @@ ur_result_t ur_kernel_handle_t_::prepareForSubmission(
     UR_CALL(setArgPointer(pending.argIndex, nullptr, zePtr));
   }
   pending_allocations.clear();
+
+  queueSubmitEpoch = hQueue->getCurrentEpochUnlocked();
+  this->hQueue = hQueue;
 
   return UR_RESULT_SUCCESS;
 }
@@ -361,13 +383,7 @@ ur_result_t urKernelRetain(
 ur_result_t urKernelRelease(
     ur_kernel_handle_t hKernel ///< [in] handle for the Kernel to release
     ) try {
-  if (!hKernel->RefCount.decrementAndTest())
-    return UR_RESULT_SUCCESS;
-
-  hKernel->release();
-  delete hKernel;
-
-  return UR_RESULT_SUCCESS;
+  return hKernel->release();
 } catch (...) {
   return exceptionToResult(std::current_exception());
 }
