@@ -85,6 +85,10 @@ public:
   // Get the type of the command that this event is associated with
   ur_command_t getCommandType() const;
 
+  void setCompleted(bool completed) {
+    this->completed = completed;
+  }
+
   // Record the start timestamp of the event, to be obtained by
   // urEventGetProfilingInfo. resetQueueAndCommand should be
   // called before this.
@@ -97,9 +101,8 @@ public:
   uint64_t getEventStartTimestmap() const;
   uint64_t getEventEndTimestamp();
 
-  bool isResetted() const { return resetted; }
-
 protected:
+  bool completed = false;
   ur_context_handle_t hContext;
 
   // non-owning handle to the L0 event

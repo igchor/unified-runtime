@@ -31,8 +31,12 @@ struct ur_command_list_handler_t {
   ur_command_list_handler_t(ze_command_list_handle_t hZeCommandList,
                             bool ownZeHandle);
 
+  void cleanupEvents(bool force = false);
+
   raii::command_list_unique_handle commandList;
   ur_event_handle_t lastEvent = nullptr;
+
+  std::deque<ur_event_handle_t> executing;
 };
 
 struct ur_queue_immediate_in_order_t : _ur_object, public ur_queue_handle_t_ {

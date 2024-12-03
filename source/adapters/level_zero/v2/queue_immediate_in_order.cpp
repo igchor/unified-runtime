@@ -21,15 +21,47 @@
 
 namespace v2 {
 
+static uint64_t CHECK_EXECUTING = []() {
+  return getenv_to_unsigned("UR_L0_V2_CHECK_EXECUTING").value_or(16);
+}();
+
+static uint64_t EVENT_POOL_CLEANUP_SIZE = []() {
+  return getenv_to_unsigned("UR_L0_V2_EVENT_POOL_CLEANUP_SIZE").value_or(100);
+}();
+
+void ur_command_list_handler_t::cleanupEvents(bool force){
+  size_t numToCleanup = std::min(CHECK_EXECUTING, executing.size());
+  
+  if (executing.size() > EVENT_POOL_CLEANUP_SIZE || force) {
+    if (force) numToCleanup = executing.size();
+    size_t completed = 0;
+    for (size_t i = 0; i < numToCleanup; i++) {
+      if (zeEventQueryStatus(executing[i]->getZeEvent()) == ZE_RESULT_SUCCESS) {
+        executing[i]->setCompleted(true);
+        ur::level_zero::urEventRelease(executing[i]);
+        completed++;
+      } else {
+        break;
+      }
+    }
+
+    executing.erase(executing.begin(), executing.begin() + completed);
+  }
+
+  if (force) {
+    lastEvent = nullptr;
+  }
+}
+
 std::pair<ze_event_handle_t *, uint32_t>
 ur_queue_immediate_in_order_t::getWaitListView(
     const ur_event_handle_t *phWaitEvents, uint32_t numWaitEvents) {
 
-  eventPool->cleanupExecuting();
-
   // this will always be true for native events (i.e. we will always add native
   // event to the wait list)
-  bool useLastEvent = handler.lastEvent && !handler.lastEvent->isResetted();
+  bool useLastEvent = handler.lastEvent;
+
+  handler.cleanupEvents();
 
   waitList.resize(numWaitEvents + uint32_t(useLastEvent));
   for (uint32_t i = 0; i < numWaitEvents; i++) {
@@ -197,7 +229,9 @@ ur_result_t ur_queue_immediate_in_order_t::queueFinish() {
   ZE2UR_CALL(zeCommandListHostSynchronize,
              (handler.commandList.get(), UINT64_MAX));
 
-  eventPool->forceCleanupExecuting();
+  // eventPool->forceCleanupExecuting();
+
+  handler.cleanupEvents(true);
 
   // Free deferred events
   for (auto &hEvent : deferredEvents) {
@@ -267,10 +301,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueKernelLaunch(
              (handler.commandList.get(), hZeKernel, &zeThreadGroupDimensions,
               zeSignalEvent, waitList.second, waitList.first));
 
-  if (!phEvent) {
-    // release event back to the pool
-    urEventRelease(signalEvent);
-  }
+  handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -303,10 +335,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueEventsWait(
                (handler.commandList.get(), signalEvent->getZeEvent()));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+    handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -333,10 +363,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueEventsWaitWithBarrier(
              (handler.commandList.get(), signalEvent->getZeEvent(),
               numWaitEvents, pWaitEvents));
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -393,10 +421,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueGenericCopyUnlocked(
     ZE2UR_CALL(zeEventHostSynchronize, (zeSignalEvent, UINT64_MAX));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -487,10 +513,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueRegionCopyUnlocked(
     ZE2UR_CALL(zeEventHostSynchronize, (zeSignalEvent, UINT64_MAX));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -683,10 +707,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueMemBufferMap(
                (handler.commandList.get(), UINT64_MAX));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -721,10 +743,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueMemUnmap(
                (handler.commandList.get(), signalEvent->getZeEvent()));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -765,10 +785,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueGenericFillUnlocked(
              (handler.commandList.get(), pDst, pPattern, patternSize, size,
               zeSignalEvent, waitList.second, waitList.first));
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -810,10 +828,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMMemcpy(
     ZE2UR_CALL(zeEventHostSynchronize, (zeSignalEvent, UINT64_MAX));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -846,10 +862,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueUSMPrefetch(
                (handler.commandList.get(), signalEvent->getZeEvent()));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -885,10 +899,8 @@ ur_queue_immediate_in_order_t::enqueueUSMAdvise(const void *pMem, size_t size,
                (handler.commandList.get(), signalEvent->getZeEvent()));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -1118,10 +1130,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueCooperativeKernelLaunchExp(
              (handler.commandList.get(), hZeKernel, &zeThreadGroupDimensions,
               zeSignalEvent, waitList.second, waitList.first));
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }
@@ -1157,10 +1167,8 @@ ur_result_t ur_queue_immediate_in_order_t::enqueueTimestampRecordingExp(
     ZE2UR_CALL(zeEventHostSynchronize, (zeSignalEvent, UINT64_MAX));
   }
 
-  if (!phEvent) {
-    // return event to the pool, it won't be reaused until it is completed
-    urEventRelease(signalEvent);
-  }
+handler.executing.push_back(signalEvent);
+  if (phEvent) signalEvent->retain();
 
   return UR_RESULT_SUCCESS;
 }

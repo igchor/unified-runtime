@@ -93,6 +93,7 @@ void event_pool::free(ur_pooled_event_t *event, bool completed) {
 
   if (completed) {
     event->reset();
+    event->setCompleted(false);
     freelist.push_back(event);
   } else {
     executing.push_back(event);
