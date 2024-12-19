@@ -212,6 +212,26 @@ TEST_P(urEnqueueMemBufferMapTestWithParam, SuccessMultiMaps) {
     }
 }
 
+TEST_P(urEnqueueMemBufferMapTestWithParam, SUCCESS) {
+    uur::raii::Mem buffer = nullptr;
+
+    void *ptr = new char[4096];
+
+    ur_buffer_properties_t props;
+    props.pHost = ptr;
+
+    ASSERT_SUCCESS(urMemBufferCreate(context, 0, 4096, &props, buffer.ptr()));
+
+    void *mappedPtr = nullptr;
+    ASSERT_SUCCESS(urEnqueueMemBufferMap(
+        queue, buffer.get(), true, UR_MAP_FLAG_READ | UR_MAP_FLAG_WRITE, 0,
+        size, 0, nullptr, nullptr, &mappedPtr));
+
+    ASSERT_EQ(ptr, mappedPtr);
+
+    delete ptr;
+}
+
 TEST_P(urEnqueueMemBufferMapTestWithParam, InvalidNullHandleQueue) {
     void *map = nullptr;
     ASSERT_EQ_RESULT(UR_RESULT_ERROR_INVALID_NULL_HANDLE,
