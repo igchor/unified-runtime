@@ -9,7 +9,6 @@
 
 struct urMemImageGetInfoTest : uur::urMemImageTestWithParam<ur_image_info_t> {
   void SetUp() override {
-    UUR_KNOWN_FAILURE_ON(uur::LevelZeroV2{});
     UUR_RETURN_ON_FATAL_FAILURE(
         uur::urMemImageTestWithParam<ur_image_info_t>::SetUp());
   }
@@ -36,7 +35,7 @@ UUR_DEVICE_TEST_SUITE_P(
 TEST_P(urMemImageGetInfoTest, Success) {
   UUR_KNOWN_FAILURE_ON(uur::HIP{});
   // This fail is specific to the "Multi device testing" ci job.
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   ur_image_info_t info = getParam();
   size_t size = 0;
@@ -79,7 +78,7 @@ TEST_P(urMemImageGetInfoTest, InvalidSizeZero) {
 
 TEST_P(urMemImageGetInfoTest, InvalidSizeSmall) {
   // This fail is specific to the "Multi device testing" ci job.
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   int info_size = 0;
   ASSERT_EQ_RESULT(urMemImageGetInfo(image, UR_IMAGE_INFO_FORMAT,

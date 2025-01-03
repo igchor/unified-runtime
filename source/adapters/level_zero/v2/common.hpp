@@ -118,5 +118,8 @@ using ze_context_handle_t = HANDLE_WRAPPER_TYPE(::ze_context_handle_t,
 using ze_command_list_handle_t = HANDLE_WRAPPER_TYPE(::ze_command_list_handle_t,
                                                      zeCommandListDestroy);
 
+using ze_image_handle_t =
+    ze_handle_wrapper<::ze_image_handle_t, zeImageDestroy>;
+
 } // namespace raii
 } // namespace v2

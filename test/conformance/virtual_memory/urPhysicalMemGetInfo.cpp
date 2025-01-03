@@ -10,7 +10,7 @@ using urPhysicalMemGetInfoTest = uur::urPhysicalMemTest;
 UUR_INSTANTIATE_DEVICE_TEST_SUITE_P(urPhysicalMemGetInfoTest);
 
 TEST_P(urPhysicalMemGetInfoTest, SuccessContext) {
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   ur_physical_mem_info_t property_name = UR_PHYSICAL_MEM_INFO_CONTEXT;
   size_t property_size = 0;
@@ -29,7 +29,7 @@ TEST_P(urPhysicalMemGetInfoTest, SuccessContext) {
 }
 
 TEST_P(urPhysicalMemGetInfoTest, SuccessDevice) {
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   ur_physical_mem_info_t property_name = UR_PHYSICAL_MEM_INFO_DEVICE;
   size_t property_size = 0;
@@ -48,7 +48,7 @@ TEST_P(urPhysicalMemGetInfoTest, SuccessDevice) {
 }
 
 TEST_P(urPhysicalMemGetInfoTest, SuccessSize) {
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   ur_physical_mem_info_t property_name = UR_PHYSICAL_MEM_INFO_SIZE;
   size_t property_size = 0;
@@ -67,7 +67,7 @@ TEST_P(urPhysicalMemGetInfoTest, SuccessSize) {
 }
 
 TEST_P(urPhysicalMemGetInfoTest, SuccessProperties) {
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   ur_physical_mem_info_t property_name = UR_PHYSICAL_MEM_INFO_PROPERTIES;
   size_t property_size = 0;
