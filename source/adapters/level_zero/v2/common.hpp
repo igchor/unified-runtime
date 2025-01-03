@@ -31,6 +31,8 @@ template <typename ZeHandleT> const char *zeDestroyFunctionName() {
     return "zeContextDestroy";
   } else if constexpr (std::is_same_v<ZeHandleT, ::ze_command_list_handle_t>) {
     return "zeCommandListDestroy";
+  } else if constexpr (std::is_same_v<ZeHandleT, ::ze_image_handle_t>) {
+    return "zeImageDestroy";
   } else {
     static_assert(sizeof(ZeHandleT) == 0, "Unknown handle type");
   }
@@ -121,6 +123,9 @@ using ze_context_handle_t =
 
 using ze_command_list_handle_t =
     ze_handle_wrapper<::ze_command_list_handle_t, zeCommandListDestroy>;
+
+using ze_image_handle_t =
+    ze_handle_wrapper<::ze_image_handle_t, zeImageDestroy>;
 
 } // namespace raii
 } // namespace v2
