@@ -18,6 +18,7 @@
 #include "../helpers/kernel_helpers.hpp"
 #include "../platform.hpp"
 #include "../program.hpp"
+#include "../sampler.hpp"
 #include "../ur_interface_loader.hpp"
 
 ur_single_device_kernel_t::ur_single_device_kernel_t(ur_device_handle_t hDevice,
@@ -385,7 +386,7 @@ ur_result_t urKernelSetArgValue(
     const void
         *pArgValue ///< [in] argument value represented as matching arg type.
     ) try {
-  TRACK_SCOPE_LATENCY("ur_kernel_handle_t_::setArgValue");
+  TRACK_SCOPE_LATENCY("urKernelSetArgValue");
 
   std::scoped_lock<ur_shared_mutex> guard(hKernel->Mutex);
   return hKernel->setArgValue(argIndex, argSize, pProperties, pArgValue);
@@ -401,7 +402,7 @@ ur_result_t urKernelSetArgPointer(
     const void
         *pArgValue ///< [in] argument value represented as matching arg type.
     ) try {
-  TRACK_SCOPE_LATENCY("ur_kernel_handle_t_::setArgPointer");
+  TRACK_SCOPE_LATENCY("urKernelSetArgPointer");
 
   std::scoped_lock<ur_shared_mutex> guard(hKernel->Mutex);
   return hKernel->setArgPointer(argIndex, pProperties, pArgValue);
@@ -430,7 +431,7 @@ ur_result_t
 urKernelSetArgMemObj(ur_kernel_handle_t hKernel, uint32_t argIndex,
                      const ur_kernel_arg_mem_obj_properties_t *pProperties,
                      ur_mem_handle_t hArgValue) try {
-  TRACK_SCOPE_LATENCY("ur_kernel_handle_t_::setArgMemObj");
+  TRACK_SCOPE_LATENCY("urKernelSetArgMemObj");
 
   std::scoped_lock<ur_shared_mutex> guard(hKernel->Mutex);
 
@@ -446,7 +447,7 @@ ur_result_t
 urKernelSetArgLocal(ur_kernel_handle_t hKernel, uint32_t argIndex,
                     size_t argSize,
                     const ur_kernel_arg_local_properties_t *pProperties) try {
-  TRACK_SCOPE_LATENCY("ur_kernel_handle_t_::setArgLocal");
+  TRACK_SCOPE_LATENCY("urKernelSetArgLocal");
 
   std::scoped_lock<ur_shared_mutex> guard(hKernel->Mutex);
 
@@ -624,6 +625,22 @@ ur_result_t urKernelGetInfo(ur_kernel_handle_t hKernel,
   }
 
   return UR_RESULT_SUCCESS;
+} catch (...) {
+  return exceptionToResult(std::current_exception());
+}
+
+ur_result_t
+urKernelSetArgSampler(ur_kernel_handle_t hKernel, uint32_t argIndex,
+                      const ur_kernel_arg_sampler_properties_t *pProperties,
+                      ur_sampler_handle_t hArgValue) try {
+  TRACK_SCOPE_LATENCY("urKernelSetArgSampler");
+
+  std::scoped_lock<ur_shared_mutex> guard(hKernel->Mutex);
+
+  std::ignore = pProperties;
+
+  return hKernel->setArgValue(argIndex, sizeof(void *), nullptr,
+                              &hArgValue->ZeSampler);
 } catch (...) {
   return exceptionToResult(std::current_exception());
 }
