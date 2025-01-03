@@ -203,7 +203,7 @@ TEST_P(urMemImageCreateTest, InvalidSize) {
                        uur::OpenCL{"Intel(R) UHD Graphics 770"});
 
   // This fail is specific to the "Multi device testing" ci job.
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   uur::raii::Mem image_handle = nullptr;
 
@@ -234,7 +234,7 @@ TEST_P(urMemImageCreateTest, InvalidSize) {
 
 TEST_P(urMemImageCreateTest, InvalidImageDescStype) {
   // This fail is specific to the "Multi device testing" ci job.
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   uur::raii::Mem image_handle = nullptr;
   ur_image_desc_t invalid_image_desc = image_desc;
@@ -335,7 +335,7 @@ TEST_P(urMemImageCreateWithHostPtrFlagsTest, Success) {
   UUR_KNOWN_FAILURE_ON(uur::OpenCL{"Intel(R) FPGA"});
 
   // This fail is specific to the "Multi device testing" ci job.
-  UUR_KNOWN_FAILURE_ON(uur::LevelZero{});
+  UUR_KNOWN_FAILURE_ON(uur::LevelZero{}, uur::LevelZeroV2{});
 
   uur::raii::Mem host_ptr_buffer = nullptr;
   ASSERT_SUCCESS(urMemImageCreate(context, UR_MEM_FLAG_ALLOC_HOST_POINTER,
