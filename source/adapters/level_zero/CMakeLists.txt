@@ -144,6 +144,8 @@ if(UR_BUILD_ADAPTER_L0_V2)
         ${CMAKE_CURRENT_SOURCE_DIR}/virtual_mem.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../ur/ur.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tensor_map.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sampler.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sampler.cpp
         # v2-only sources
         ${CMAKE_CURRENT_SOURCE_DIR}/v2/command_list_cache.hpp
         ${CMAKE_CURRENT_SOURCE_DIR}/v2/context.hpp
