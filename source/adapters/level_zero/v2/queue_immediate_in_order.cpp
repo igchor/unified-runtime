@@ -16,6 +16,7 @@
 #include "../common/latency_tracker.hpp"
 #include "../helpers/kernel_helpers.hpp"
 #include "../helpers/memory_helpers.hpp"
+#include "../image.hpp"
 #include "../program.hpp"
 #include "../ur_interface_loader.hpp"
 
@@ -1078,18 +1079,68 @@ ur_result_t ur_queue_immediate_in_order_t::bindlessImagesImageCopyExp(
     ur_exp_image_copy_region_t *pCopyRegion,
     ur_exp_image_copy_flags_t imageCopyFlags, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
-  std::ignore = pDst;
-  std::ignore = pSrc;
-  std::ignore = pSrcImageDesc;
-  std::ignore = pDstImageDesc;
-  std::ignore = imageCopyFlags;
-  std::ignore = pSrcImageFormat;
-  std::ignore = pDstImageFormat;
-  std::ignore = pCopyRegion;
-  std::ignore = numEventsInWaitList;
-  std::ignore = phEventWaitList;
-  std::ignore = phEvent;
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  TRACK_SCOPE_LATENCY(
+      "ur_queue_immediate_in_order_t::bindlessImagesImageCopyExp");
+
+  std::scoped_lock<ur_shared_mutex> lock(this->Mutex);
+
+  UR_ASSERT(pDst && pSrc && pSrcImageFormat && pSrcImageDesc && pDstImageDesc &&
+                pCopyRegion,
+            UR_RESULT_ERROR_INVALID_NULL_POINTER);
+  UR_ASSERT(pSrcImageDesc->type == pDstImageDesc->type,
+            UR_RESULT_ERROR_INVALID_VALUE);
+  UR_ASSERT(!(UR_EXP_IMAGE_COPY_FLAGS_MASK & imageCopyFlags),
+            UR_RESULT_ERROR_INVALID_ENUMERATION);
+  UR_ASSERT(!(pSrcImageDesc && UR_MEM_TYPE_IMAGE1D_ARRAY < pSrcImageDesc->type),
+            UR_RESULT_ERROR_INVALID_IMAGE_FORMAT_DESCRIPTOR);
+
+  auto signalEvent = getSignalEvent(phEvent, UR_COMMAND_MEM_IMAGE_COPY);
+  auto [pWaitEvents, numWaitEvents] =
+      getWaitListView(phEventWaitList, numEventsInWaitList);
+
+  auto copyDesc =
+      getImageCopyDesc(imageCopyFlags, pSrcImageDesc, pSrcImageFormat,
+                       pDstImageDesc, pDstImageFormat, pCopyRegion, pSrc, pDst);
+
+  auto zeSignalEvent = signalEvent ? signalEvent->getZeEvent() : nullptr;
+  if (auto *Desc = std::get_if<h2d_non_usm>(&copyDesc)) {
+    auto *UrImage = reinterpret_cast<ur_exp_bindless_image_t *>(Desc->DstImage);
+    ZE2UR_CALL(zeCommandListAppendImageCopyFromMemoryExt,
+               (handler.commandList.get(), UrImage->getZeImage(), Desc->SrcPtr,
+                &Desc->DstRegion, Desc->SrcRowPitch, Desc->SrcSlicePitch,
+                zeSignalEvent, numWaitEvents, pWaitEvents));
+  } else if (auto *Desc = std::get_if<h2d_pitched_usm>(&copyDesc)) {
+    ZE2UR_CALL(zeCommandListAppendMemoryCopyRegion,
+               (handler.commandList.get(), Desc->DstPtr, &Desc->ZeDstRegion,
+                Desc->DstRowPitch, Desc->DstSlicePitch, Desc->SrcPtr,
+                &Desc->ZeSrcRegion, Desc->SrcRowPitch, Desc->SrcSlicePitch,
+                zeSignalEvent, numWaitEvents, pWaitEvents));
+  } else if (auto *Desc = std::get_if<d2h_non_usm>(&copyDesc)) {
+    auto *UrImage =
+        reinterpret_cast<const ur_exp_bindless_image_t *>(Desc->SrcImage);
+    ZE2UR_CALL(zeCommandListAppendImageCopyToMemoryExt,
+               (handler.commandList.get(), Desc->DstPtr, UrImage->getZeImage(),
+                &Desc->SrcRegion, Desc->DstRowPitch, Desc->DstSlicePitch,
+                zeSignalEvent, numWaitEvents, pWaitEvents));
+  } else if (auto *Desc = std::get_if<d2h_pitched_usm>(&copyDesc)) {
+    ZE2UR_CALL(zeCommandListAppendMemoryCopyRegion,
+               (handler.commandList.get(), Desc->DstPtr, &Desc->ZeDstRegion,
+                Desc->DstRowPitch, Desc->DstSlicePitch, Desc->SrcPtr,
+                &Desc->ZeSrcRegion, Desc->SrcRowPitch, Desc->SrcSlicePitch,
+                zeSignalEvent, numWaitEvents, pWaitEvents));
+  } else if (auto *Desc = std::get_if<d2d>(&copyDesc)) {
+    auto SrcImage = reinterpret_cast<ur_exp_bindless_image_t *>(Desc->SrcImage);
+    auto DstImage = reinterpret_cast<ur_exp_bindless_image_t *>(Desc->DstImage);
+    ZE2UR_CALL(zeCommandListAppendImageCopyRegion,
+               (handler.commandList.get(), DstImage->getZeImage(),
+                SrcImage->getZeImage(), &Desc->SrcRegion, &Desc->DstRegion,
+                zeSignalEvent, numWaitEvents, pWaitEvents));
+  } else {
+    logger::error("urBindlessImagesImageCopyExp: unexpected imageCopyFlags");
+    throw UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  }
+
+  return UR_RESULT_SUCCESS;
 }
 
 ur_result_t
@@ -1097,13 +1148,35 @@ ur_queue_immediate_in_order_t::bindlessImagesWaitExternalSemaphoreExp(
     ur_exp_external_semaphore_handle_t hSemaphore, bool hasWaitValue,
     uint64_t waitValue, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
-  std::ignore = hSemaphore;
-  std::ignore = hasWaitValue;
-  std::ignore = waitValue;
-  std::ignore = numEventsInWaitList;
-  std::ignore = phEventWaitList;
-  std::ignore = phEvent;
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  TRACK_SCOPE_LATENCY(
+      "ur_queue_immediate_in_order_t::bindlessImagesWaitExternalSemaphoreExp");
+
+  auto hPlatform = hContext->getPlatform();
+  if (hPlatform->ZeExternalSemaphoreExt.Supported == false) {
+    logger::error(logger::LegacyMessage("[UR][L0] "),
+                  " {} function not supported!", __FUNCTION__);
+    return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  }
+
+  std::scoped_lock<ur_shared_mutex> lock(this->Mutex);
+
+  auto signalEvent =
+      getSignalEvent(phEvent, UR_COMMAND_EXTERNAL_SEMAPHORE_WAIT_EXP);
+  auto waitList = getWaitListView(phEventWaitList, numEventsInWaitList);
+
+  ze_intel_external_semaphore_wait_exp_params_t waitParams = {
+      ZE_INTEL_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_WAIT_PARAMS_EXP, nullptr, 0};
+  waitParams.value = hasWaitValue ? waitValue : 0;
+  const ze_intel_external_semaphore_exp_handle_t hExtSemaphore =
+      reinterpret_cast<ze_intel_external_semaphore_exp_handle_t>(hSemaphore);
+
+  auto zeSignalEvent = signalEvent ? signalEvent->getZeEvent() : nullptr;
+  ZE2UR_CALL(hPlatform->ZeExternalSemaphoreExt
+                 .zexCommandListAppendWaitExternalSemaphoresExp,
+             (handler.commandList.get(), 1, &hExtSemaphore, &waitParams,
+              zeSignalEvent, waitList.second, waitList.first));
+
+  return UR_RESULT_SUCCESS;
 }
 
 ur_result_t
@@ -1111,13 +1184,35 @@ ur_queue_immediate_in_order_t::bindlessImagesSignalExternalSemaphoreExp(
     ur_exp_external_semaphore_handle_t hSemaphore, bool hasSignalValue,
     uint64_t signalValue, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
-  std::ignore = hSemaphore;
-  std::ignore = hasSignalValue;
-  std::ignore = signalValue;
-  std::ignore = numEventsInWaitList;
-  std::ignore = phEventWaitList;
-  std::ignore = phEvent;
-  return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  TRACK_SCOPE_LATENCY("ur_queue_immediate_in_order_t::"
+                      "bindlessImagesSignalExternalSemaphoreExp");
+
+  auto hPlatform = hContext->getPlatform();
+  if (hPlatform->ZeExternalSemaphoreExt.Supported == false) {
+    logger::error(logger::LegacyMessage("[UR][L0] "),
+                  " {} function not supported!", __FUNCTION__);
+    return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+  }
+
+  std::scoped_lock<ur_shared_mutex> lock(this->Mutex);
+
+  auto signalEvent =
+      getSignalEvent(phEvent, UR_COMMAND_EXTERNAL_SEMAPHORE_SIGNAL_EXP);
+  auto waitList = getWaitListView(phEventWaitList, numEventsInWaitList);
+
+  ze_intel_external_semaphore_signal_exp_params_t signalParams = {
+      ZE_INTEL_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS_EXP, nullptr, 0};
+  signalParams.value = hasSignalValue ? signalValue : 0;
+  const ze_intel_external_semaphore_exp_handle_t hExtSemaphore =
+      reinterpret_cast<ze_intel_external_semaphore_exp_handle_t>(hSemaphore);
+
+  auto zeSignalEvent = signalEvent ? signalEvent->getZeEvent() : nullptr;
+  ZE2UR_CALL(hPlatform->ZeExternalSemaphoreExt
+                 .zexCommandListAppendSignalExternalSemaphoresExp,
+             (handler.commandList.get(), 1, &hExtSemaphore, &signalParams,
+              zeSignalEvent, waitList.second, waitList.first));
+
+  return UR_RESULT_SUCCESS;
 }
 
 ur_result_t ur_queue_immediate_in_order_t::enqueueCooperativeKernelLaunchExp(
