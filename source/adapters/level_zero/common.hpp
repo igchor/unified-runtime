@@ -607,3 +607,41 @@ typedef struct _ze_intel_external_semaphore_exp_handle_t
   (ze_structure_type_t)0x00030024
 #define ZE_INTEL_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_WAIT_PARAMS_EXP             \
   (ze_structure_type_t)0x00030025
+
+typedef ze_result_t(ZE_APICALL *zeImageGetDeviceOffsetExp_pfn)(
+    ze_image_handle_t hImage, uint64_t *pDeviceOffset);
+
+typedef ze_result_t(ZE_APICALL *zeMemGetPitchFor2dImage_pfn)(
+    ze_context_handle_t hContext, ze_device_handle_t hDevice, size_t imageWidth,
+    size_t imageHeight, unsigned int elementSizeInBytes, size_t *rowPitch);
+
+template <typename F> const char *pfnToName() {
+  if constexpr (std::is_same_v<F, zeImageGetDeviceOffsetExp_pfn>)
+    return "zeImageGetDeviceOffsetExp";
+  else if constexpr (std::is_same_v<F, zeMemGetPitchFor2dImage_pfn>)
+    return "zeMemGetPitchFor2dImage";
+  else
+    static_assert(sizeof(F) == 0, "Unknown function type");
+}
+
+template <typename F, typename... Args>
+ur_result_t callDriverFunction(ze_driver_handle_t hDriver, Args... args) {
+  static std::once_flag initFlag;
+  static F pfn = nullptr;
+
+  std::call_once(initFlag, [&]() {
+    auto Result = zeDriverGetExtensionFunctionAddress(hDriver, pfnToName<F>(),
+                                                      (void **)&pfn);
+    if (Result != ZE_RESULT_SUCCESS)
+      logger::error("zeDriverGetExtensionFunctionAddress "
+                    "{} failed, err = {}",
+                    pfnToName<F>(), Result);
+  });
+
+  if (!pfn)
+    return UR_RESULT_ERROR_INVALID_OPERATION;
+
+  ZE2UR_CALL(pfn, (args...));
+
+  return UR_RESULT_SUCCESS;
+}

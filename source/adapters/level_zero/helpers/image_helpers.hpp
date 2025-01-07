@@ -24,6 +24,10 @@ ur_result_t ur2zeImageDesc(const ur_image_format_t *ImageFormat,
                            const ur_image_desc_t *ImageDesc,
                            ZeStruct<ze_image_desc_t> &ZeImageDesc);
 
+ur_result_t ur2zeImageDescBindless(const ur_image_format_t *ImageFormat,
+                                   const ur_image_desc_t *ImageDesc,
+                                   ZeStruct<ze_image_desc_t> &ZeImageDesc);
+
 /// Return element size in bytes of a pixel.
 uint32_t getPixelSizeBytes(const ur_image_format_t *Format);
 
@@ -36,3 +40,16 @@ ur_result_t getImageRegionHelper(ze_image_desc_t ZeImageDesc,
 
 std::pair<ze_image_format_type_t, size_t>
 getImageFormatTypeAndSize(const ur_image_format_t *ImageFormat);
+
+struct bindless_image_handle_t {
+  uint64_t DeviceOffset;
+  ze_image_handle_t ZeImage;
+};
+
+ur_result_t bindlessImageCreate(ur_context_handle_t hContext,
+                                     ur_device_handle_t hDevice,
+                                     ur_exp_image_mem_native_handle_t hImageMem,
+                                     const ur_image_format_t *pImageFormat,
+                                     const ur_image_desc_t *pImageDesc,
+                                     ur_sampler_handle_t hSampler,
+                                     bindless_image_handle_t &bindlessHandle);

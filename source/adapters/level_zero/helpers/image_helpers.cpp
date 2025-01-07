@@ -520,3 +520,213 @@ getImageFormatTypeAndSize(const ur_image_format_t *ImageFormat) {
   }
   return {ZeImageFormatType, ZeImageFormatTypeSize};
 }
+
+// TODO: unify with image_helpers.cpp/ur2zeImageDesc
+ur_result_t ur2zeImageDescBindless(const ur_image_format_t *ImageFormat,
+                                   const ur_image_desc_t *ImageDesc,
+                                   ZeStruct<ze_image_desc_t> &ZeImageDesc) {
+  auto [ZeImageFormatType, ZeImageFormatTypeSize] =
+      getImageFormatTypeAndSize(ImageFormat);
+  if (ZeImageFormatTypeSize == 0) {
+    return UR_RESULT_ERROR_UNSUPPORTED_IMAGE_FORMAT;
+  }
+  // TODO: populate the layout mapping
+  ze_image_format_layout_t ZeImageFormatLayout;
+  switch (ImageFormat->channelOrder) {
+  case UR_IMAGE_CHANNEL_ORDER_A:
+  case UR_IMAGE_CHANNEL_ORDER_R: {
+    switch (ZeImageFormatTypeSize) {
+    case 8:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_8;
+      break;
+    case 16:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_16;
+      break;
+    case 32:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_32;
+      break;
+    default:
+      logger::error("ur2zeImageDescBindless: unexpected data type size");
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+    break;
+  }
+  case UR_IMAGE_CHANNEL_ORDER_RG:
+  case UR_IMAGE_CHANNEL_ORDER_RA:
+  case UR_IMAGE_CHANNEL_ORDER_RX: {
+    switch (ZeImageFormatTypeSize) {
+    case 8:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_8_8;
+      break;
+    case 16:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_16_16;
+      break;
+    case 32:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_32_32;
+      break;
+    default:
+      logger::error("ur2zeImageDescBindless: unexpected data type size");
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+    break;
+  }
+  case UR_IMAGE_CHANNEL_ORDER_RGBX:
+  case UR_IMAGE_CHANNEL_ORDER_RGBA:
+  case UR_IMAGE_CHANNEL_ORDER_ARGB:
+  case UR_IMAGE_CHANNEL_ORDER_BGRA: {
+    switch (ZeImageFormatTypeSize) {
+    case 8:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_8_8_8_8;
+      break;
+    case 16:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_16_16_16_16;
+      break;
+    case 32:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_32_32_32_32;
+      break;
+    default:
+      logger::error("ur2zeImageDescBindless: unexpected data type size");
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+    break;
+  }
+  case UR_IMAGE_CHANNEL_ORDER_RGB:
+  case UR_IMAGE_CHANNEL_ORDER_RGX: {
+    switch (ZeImageFormatTypeSize) {
+    case 8:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_8_8_8;
+      break;
+    case 16:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_16_16_16;
+      break;
+    case 32:
+      ZeImageFormatLayout = ZE_IMAGE_FORMAT_LAYOUT_32_32_32;
+      break;
+    default:
+      logger::error("ur2zeImageDescBindless: unexpected data type size");
+      return UR_RESULT_ERROR_INVALID_VALUE;
+    }
+    break;
+  }
+  default:
+    logger::error("format channel order = {}", ImageFormat->channelOrder);
+    die("ur2zeImageDescBindless: unsupported image channel order\n");
+    break;
+  }
+
+  ze_image_format_t ZeFormatDesc = {
+      ZeImageFormatLayout, ZeImageFormatType,
+      // TODO: are swizzles deducted from image_format->image_channel_order?
+      ZE_IMAGE_FORMAT_SWIZZLE_R, ZE_IMAGE_FORMAT_SWIZZLE_G,
+      ZE_IMAGE_FORMAT_SWIZZLE_B, ZE_IMAGE_FORMAT_SWIZZLE_A};
+
+  ze_image_type_t ZeImageType;
+  switch (ImageDesc->type) {
+  case UR_MEM_TYPE_IMAGE1D:
+    ZeImageType = ZE_IMAGE_TYPE_1D;
+    break;
+  case UR_MEM_TYPE_IMAGE2D:
+    ZeImageType = ZE_IMAGE_TYPE_2D;
+    break;
+  case UR_MEM_TYPE_IMAGE3D:
+    ZeImageType = ZE_IMAGE_TYPE_3D;
+    break;
+  case UR_MEM_TYPE_IMAGE1D_ARRAY:
+    ZeImageType = ZE_IMAGE_TYPE_1DARRAY;
+    break;
+  case UR_MEM_TYPE_IMAGE2D_ARRAY:
+    ZeImageType = ZE_IMAGE_TYPE_2DARRAY;
+    break;
+  default:
+    logger::error("ur2zeImageDescBindless: unsupported image type");
+    return UR_RESULT_ERROR_INVALID_VALUE;
+  }
+
+  ZeImageDesc.stype = ZE_STRUCTURE_TYPE_IMAGE_DESC;
+  ZeImageDesc.pNext = ImageDesc->pNext;
+  ZeImageDesc.type = ZeImageType;
+  ZeImageDesc.format = ZeFormatDesc;
+  ZeImageDesc.width = ur_cast<uint64_t>(ImageDesc->width);
+  ZeImageDesc.height =
+      std::max(ur_cast<uint64_t>(ImageDesc->height), (uint64_t)1);
+  ZeImageDesc.depth =
+      std::max(ur_cast<uint64_t>(ImageDesc->depth), (uint64_t)1);
+  ZeImageDesc.arraylevels = ur_cast<uint32_t>(ImageDesc->arraySize);
+  ZeImageDesc.miplevels = ImageDesc->numMipLevel;
+
+  return UR_RESULT_SUCCESS;
+}
+
+ur_result_t bindlessImageCreate(ur_context_handle_t hContext,
+                                     ur_device_handle_t hDevice,
+                                     ur_exp_image_mem_native_handle_t hImageMem,
+                                     const ur_image_format_t *pImageFormat,
+                                     const ur_image_desc_t *pImageDesc,
+                                     ur_sampler_handle_t hSampler,
+                                     bindless_image_handle_t &bindlessHandle) {
+  UR_ASSERT(hContext && hDevice && hImageMem,
+            UR_RESULT_ERROR_INVALID_NULL_HANDLE);
+  UR_ASSERT(pImageFormat && pImageDesc,
+            UR_RESULT_ERROR_INVALID_NULL_POINTER);
+
+  ZeStruct<ze_image_desc_t> ZeImageDesc;
+  UR_CALL(ur2zeImageDescBindless(pImageFormat, pImageDesc, ZeImageDesc));
+
+  ZeStruct<ze_image_bindless_exp_desc_t> BindlessDesc;
+  BindlessDesc.flags = ZE_IMAGE_BINDLESS_EXP_FLAG_BINDLESS;
+  ZeImageDesc.pNext = &BindlessDesc;
+
+  ZeStruct<ze_sampler_desc_t> ZeSamplerDesc;
+  if (hSampler) {
+    ZeSamplerDesc = hSampler->ZeSamplerDesc;
+    BindlessDesc.pNext = &ZeSamplerDesc;
+    BindlessDesc.flags |= ZE_IMAGE_BINDLESS_EXP_FLAG_SAMPLED_IMAGE;
+  }
+
+  ze_image_handle_t ZeImage;
+
+  ze_memory_allocation_properties_t MemAllocProperties{
+      ZE_STRUCTURE_TYPE_MEMORY_ALLOCATION_PROPERTIES, nullptr,
+      ZE_MEMORY_TYPE_UNKNOWN, 0, 0};
+  ZE2UR_CALL(zeMemGetAllocProperties,
+             (hContext->ZeContext, reinterpret_cast<const void *>(hImageMem),
+              &MemAllocProperties, nullptr));
+  if (MemAllocProperties.type == ZE_MEMORY_TYPE_UNKNOWN) {
+    _ur_image *UrImage = reinterpret_cast<_ur_image *>(hImageMem);
+
+    ZE2UR_CALL(zeImageViewCreateExt,
+               (hContext->ZeContext, hDevice->ZeDevice, &ZeImageDesc,
+                UrImage->ZeImage, &ZeImage));
+    ZE2UR_CALL(zeContextMakeImageResident,
+               (hContext->ZeContext, hDevice->ZeDevice, ZeImage));
+  } else if (MemAllocProperties.type == ZE_MEMORY_TYPE_DEVICE ||
+             MemAllocProperties.type == ZE_MEMORY_TYPE_SHARED) {
+    ZeStruct<ze_image_pitched_exp_desc_t> PitchedDesc;
+    PitchedDesc.ptr = reinterpret_cast<void *>(hImageMem);
+    if (hSampler) {
+      ZeSamplerDesc.pNext = &PitchedDesc;
+    } else {
+      BindlessDesc.pNext = &PitchedDesc;
+    }
+
+    ZE2UR_CALL(zeImageCreate, (hContext->ZeContext, hDevice->ZeDevice,
+                               &ZeImageDesc, &ZeImage));
+    ZE2UR_CALL(zeContextMakeImageResident,
+               (hContext->ZeContext, hDevice->ZeDevice, ZeImage));
+  } else {
+    return UR_RESULT_ERROR_INVALID_VALUE;
+  }
+
+  uint64_t DeviceOffset{};
+  ze_image_handle_t ZeImageTranslated;
+  ZE2UR_CALL(zelLoaderTranslateHandle,
+             (ZEL_HANDLE_IMAGE, ZeImage, (void **)&ZeImageTranslated));
+
+  UR_CALL(callDriverFunction<zeImageGetDeviceOffsetExp_pfn>(
+      hContext->getPlatform()->ZeDriver, ZeImageTranslated, &DeviceOffset));
+
+  bindlessHandle.DeviceOffset = DeviceOffset;
+  bindlessHandle.ZeImage = ZeImage;
+
+  return UR_RESULT_SUCCESS;
+}
