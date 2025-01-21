@@ -58,7 +58,7 @@ public:
 // EnableBuffers:   Apply chunking/pooling to SYCL buffers.
 //                  Default 1.
 // MaxPoolSize:     Limit on overall unfreed memory.
-//                  Default 16MB.
+//                  Default: no limit.
 // MaxPoolableSize: Maximum allocation size subject to chunking/pooling.
 //                  Default 2MB host, 4MB device and 0 shared.
 // Capacity:        Maximum number of unfreed allocations in each bucket.

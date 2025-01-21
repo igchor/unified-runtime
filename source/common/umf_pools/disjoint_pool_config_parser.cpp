@@ -13,6 +13,8 @@
 #include <limits>
 #include <string>
 
+#include "ur_util.hpp"
+
 namespace usm {
 constexpr auto operator""_B(unsigned long long x) -> size_t { return x; }
 constexpr auto operator""_KB(unsigned long long x) -> size_t {
@@ -70,157 +72,110 @@ DisjointPoolAllConfigs::DisjointPoolAllConfigs(int trace) {
   Configs[DisjointPoolMemType::SharedReadOnly].SlabMinSize = 2_MB;
 }
 
+std::optional<size_t> stringToNumber(std::string_view s) {
+  auto unitPos = s.find_first_of("kKmMgG");
+  size_t multiplier = 1;
+  if (unitPos != std::string_view::npos) {
+    switch (tolower(s[unitPos])) {
+    case 'k':
+      multiplier = 1_KB;
+      break;
+    case 'm':
+      multiplier = 1_MB;
+      break;
+    case 'g':
+      multiplier = 1_GB;
+      break;
+    }
+  }
+
+  try {
+    return std::stoull(std::string(s.substr(0, unitPos))) * multiplier;
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+std::pair<std::optional<size_t>, std::string_view>
+maybeParseNumber(std::string_view s) {
+  auto separator = ';';
+  auto separatorPos = s.find(separator);
+  if (separatorPos == std::string_view::npos) {
+    auto number = stringToNumber(s.substr(0, separatorPos));
+    if (number)
+      return {number, std::string_view()};
+    else
+      return {std::nullopt, s};
+  }
+
+  return {stringToNumber(s.substr(0, separatorPos)),
+          s.substr(separatorPos + 1)};
+}
+
+DisjointPoolMemType parseMemType(std::string_view s) {
+  if (s == "host")
+    return DisjointPoolMemType::Host;
+  if (s == "device")
+    return DisjointPoolMemType::Device;
+  if (s == "shared")
+    return DisjointPoolMemType::Shared;
+  if (s == "read_only_shared")
+    return DisjointPoolMemType::SharedReadOnly;
+
+  throw std::invalid_argument("Unknown memory type: " + std::string(s));
+}
+
 DisjointPoolAllConfigs parseDisjointPoolConfig(const std::string &config,
                                                int trace) {
   DisjointPoolAllConfigs AllConfigs;
 
-  // TODO: replace with UR ENV var parser and avoid creating a copy of 'config'
-  auto GetValue = [](std::string &Param, size_t Length, size_t &Setting) {
-    size_t Multiplier = 1;
-    if (tolower(Param[Length - 1]) == 'k') {
-      Length--;
-      Multiplier = 1_KB;
-    }
-    if (tolower(Param[Length - 1]) == 'm') {
-      Length--;
-      Multiplier = 1_MB;
-    }
-    if (tolower(Param[Length - 1]) == 'g') {
-      Length--;
-      Multiplier = 1_GB;
-    }
-    std::string TheNumber = Param.substr(0, Length);
-    if (TheNumber.find_first_not_of("0123456789") == std::string::npos) {
-      Setting = std::stoi(TheNumber) * Multiplier;
-    }
+  std::optional<size_t> Buffers, MaxSize;
+  std::string input;
+
+  std::tie(Buffers, input) = maybeParseNumber(config);
+  std::tie(MaxSize, input) = maybeParseNumber(input);
+
+  auto setConfigValues = [](umf_disjoint_pool_config_t &config,
+                            std::vector<std::string> values) {
+    if (values.size() > 0)
+      config.MaxPoolableSize = stringToNumber(values[0]).value();
+    if (values.size() > 1)
+      config.Capacity = stringToNumber(values[1]).value();
+    if (values.size() > 2)
+      config.SlabMinSize = stringToNumber(values[2]).value();
   };
 
-  auto ParamParser = [GetValue](std::string &Params, size_t &Setting,
-                                bool &ParamWasSet) {
-    bool More;
-    if (Params.size() == 0) {
-      ParamWasSet = false;
-      return false;
-    }
-    size_t Pos = Params.find(',');
-    if (Pos != std::string::npos) {
-      if (Pos > 0) {
-        GetValue(Params, Pos, Setting);
-        ParamWasSet = true;
-      }
-      Params.erase(0, Pos + 1);
-      More = true;
-    } else {
-      GetValue(Params, Params.size(), Setting);
-      ParamWasSet = true;
-      More = false;
-    }
-    return More;
-  };
+  try {
+    // try to parse the string with per-type settings
 
-  auto MemParser = [&AllConfigs, ParamParser](std::string &Params,
-                                              DisjointPoolMemType memType =
-                                                  DisjointPoolMemType::All) {
-    bool ParamWasSet;
-    DisjointPoolMemType LM = memType;
-    if (memType == DisjointPoolMemType::All) {
-      LM = DisjointPoolMemType::Host;
-    }
+    auto perTypeSettings = parse_string_to_map(input, false);
+    for (auto &[type, values] : perTypeSettings) {
+      DisjointPoolMemType memType = parseMemType(type);
 
-    bool More = ParamParser(Params, AllConfigs.Configs[LM].MaxPoolableSize,
-                            ParamWasSet);
-    if (ParamWasSet && memType == DisjointPoolMemType::All) {
-      for (auto &Config : AllConfigs.Configs) {
-        Config.MaxPoolableSize = AllConfigs.Configs[LM].MaxPoolableSize;
-      }
-    }
-    if (More) {
-      More = ParamParser(Params, AllConfigs.Configs[LM].Capacity, ParamWasSet);
-      if (ParamWasSet && memType == DisjointPoolMemType::All) {
-        for (auto &Config : AllConfigs.Configs) {
-          Config.Capacity = AllConfigs.Configs[LM].Capacity;
-        }
-      }
-    }
-    if (More) {
-      ParamParser(Params, AllConfigs.Configs[LM].SlabMinSize, ParamWasSet);
-      if (ParamWasSet && memType == DisjointPoolMemType::All) {
-        for (auto &Config : AllConfigs.Configs) {
-          Config.SlabMinSize = AllConfigs.Configs[LM].SlabMinSize;
-        }
-      }
-    }
-  };
+      auto &config = AllConfigs.Configs[memType];
+      if (values.size() > 3)
+        throw std::invalid_argument("Too many values for memory type " + type);
 
-  auto MemTypeParser = [MemParser](std::string &Params) {
-    int Pos = 0;
-    DisjointPoolMemType M(DisjointPoolMemType::All);
-    if (Params.compare(0, 5, "host:") == 0) {
-      Pos = 5;
-      M = DisjointPoolMemType::Host;
-    } else if (Params.compare(0, 7, "device:") == 0) {
-      Pos = 7;
-      M = DisjointPoolMemType::Device;
-    } else if (Params.compare(0, 7, "shared:") == 0) {
-      Pos = 7;
-      M = DisjointPoolMemType::Shared;
-    } else if (Params.compare(0, 17, "read_only_shared:") == 0) {
-      Pos = 17;
-      M = DisjointPoolMemType::SharedReadOnly;
+      setConfigValues(config, values);
     }
-    if (Pos > 0) {
-      Params.erase(0, Pos);
-    }
-    MemParser(Params, M);
-  };
+  } catch (std::invalid_argument &) {
+    // if parsing per-type failed, try to parse the string with settings for all
+    // types
 
-  size_t MaxSize = (std::numeric_limits<size_t>::max)();
+    auto allTypeSettings = parse_string_to_vec(input);
+    if (allTypeSettings.size() > 3)
+      throw std::invalid_argument("Too many values for memory type settings");
 
-  // Update pool settings if specified in environment.
-  size_t EnableBuffers = 1;
-  if (config != "") {
-    std::string Params = config;
-    size_t Pos = Params.find(';');
-    if (Pos != std::string::npos) {
-      if (Pos > 0) {
-        GetValue(Params, Pos, EnableBuffers);
-      }
-      Params.erase(0, Pos + 1);
-      size_t Pos = Params.find(';');
-      if (Pos != std::string::npos) {
-        if (Pos > 0) {
-          GetValue(Params, Pos, MaxSize);
-        }
-        Params.erase(0, Pos + 1);
-        do {
-          size_t Pos = Params.find(';');
-          if (Pos != std::string::npos) {
-            if (Pos > 0) {
-              std::string MemParams = Params.substr(0, Pos);
-              MemTypeParser(MemParams);
-            }
-            Params.erase(0, Pos + 1);
-            if (Params.size() == 0) {
-              break;
-            }
-          } else {
-            MemTypeParser(Params);
-            break;
-          }
-        } while (true);
-      } else {
-        // set MaxPoolSize for all configs
-        GetValue(Params, Params.size(), MaxSize);
-      }
-    } else {
-      GetValue(Params, Params.size(), EnableBuffers);
+    for (auto &Config : AllConfigs.Configs) {
+      setConfigValues(Config, allTypeSettings);
     }
   }
 
-  AllConfigs.EnableBuffers = EnableBuffers;
+  AllConfigs.EnableBuffers = Buffers.value_or(1);
 
   AllConfigs.limits = std::shared_ptr<umf_disjoint_pool_shared_limits_t>(
-      umfDisjointPoolSharedLimitsCreate(MaxSize),
+      umfDisjointPoolSharedLimitsCreate(
+          MaxSize.value_or(std::numeric_limits<size_t>::max())),
       umfDisjointPoolSharedLimitsDestroy);
 
   for (auto &Config : AllConfigs.Configs) {
@@ -268,10 +223,11 @@ DisjointPoolAllConfigs parseDisjointPoolConfig(const std::string &config,
             << std::setw(12)
             << AllConfigs.Configs[DisjointPoolMemType::SharedReadOnly].Capacity
             << std::endl;
-  std::cout << std::setw(15) << "MaxPoolSize" << std::setw(12) << MaxSize
+  std::cout << std::setw(15) << "MaxPoolSize" << std::setw(12)
+            << MaxSize.value_or(std::numeric_limits<size_t>::max())
             << std::endl;
   std::cout << std::setw(15) << "EnableBuffers" << std::setw(12)
-            << EnableBuffers << std::endl
+            << AllConfigs.EnableBuffers << std::endl
             << std::endl;
 
   return AllConfigs;
