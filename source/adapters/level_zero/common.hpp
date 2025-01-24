@@ -211,6 +211,9 @@ const int UrL0Debug = [] {
   } else if (ZeDebugMode) {
     DebugMode = std::atoi(ZeDebugMode);
   }
+  if (DebugMode) {
+    setenv("ZE_LOG_API_CALLS", "1", 1);
+  }
   return DebugMode;
 }();
 
@@ -218,7 +221,13 @@ const int UrL0LeaksDebug = [] {
   const char *UrRet = std::getenv("UR_L0_LEAKS_DEBUG");
   if (!UrRet)
     return 0;
-  return std::atoi(UrRet);
+
+  if (UrRet) {
+    setenv("ZE_ENABLE_VALIDATION_LAYER", "1", 1);
+    setenv("ZEL_ENABLE_BASIC_LEAK_CHECKER", "1", 1);
+  }
+
+  return 0;
 }();
 
 // Enable for UR L0 Adapter to Init all L0 Drivers on the system with filtering

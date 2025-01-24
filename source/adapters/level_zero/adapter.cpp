@@ -305,8 +305,8 @@ ur_adapter_handle_t_::ur_adapter_handle_t_()
   };
 
   if (UrL0Debug & UR_L0_DEBUG_VALIDATION) {
-    setEnvVar("ZE_ENABLE_VALIDATION_LAYER", "1");
-    setEnvVar("ZE_ENABLE_PARAMETER_VALIDATION", "1");
+    //setEnvVar("ZE_ENABLE_VALIDATION_LAYER", "1");
+    //setEnvVar("ZE_ENABLE_PARAMETER_VALIDATION", "1");
   }
 
   PlatformCache.Compute = [](Result<PlatformVec> &result) {
@@ -346,8 +346,8 @@ ur_adapter_handle_t_::ur_adapter_handle_t_()
       // Setting these environment variables before running zeInit will enable
       // the validation layer in the Level Zero loader.
       if (UrL0Debug & UR_L0_DEBUG_VALIDATION) {
-        setEnvVar("ZE_ENABLE_VALIDATION_LAYER", "1");
-        setEnvVar("ZE_ENABLE_PARAMETER_VALIDATION", "1");
+        //setEnvVar("ZE_ENABLE_VALIDATION_LAYER", "1");
+        //setEnvVar("ZE_ENABLE_PARAMETER_VALIDATION", "1");
       }
 
       if (getenv("SYCL_ENABLE_PCI") != nullptr) {

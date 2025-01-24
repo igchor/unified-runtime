@@ -139,7 +139,7 @@ void zeParseError(ze_result_t ZeError, const char *&ErrorString) {
 
 ze_result_t ZeCall::doCall(ze_result_t ZeResult, const char *ZeName,
                            const char *ZeArgs, bool TraceError) {
-  logger::debug("ZE ---> {}{}", ZeName, ZeArgs);
+  // logger::debug("ZE ---> {}{}", ZeName, ZeArgs);
 
   if (ZeResult == ZE_RESULT_SUCCESS) {
     if (UrL0LeaksDebug) {
