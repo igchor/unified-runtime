@@ -211,6 +211,11 @@ const int UrL0Debug = [] {
   } else if (ZeDebugMode) {
     DebugMode = std::atoi(ZeDebugMode);
   }
+
+  if (DebugMode & UR_L0_DEBUG_BASIC) {
+    setenv("ZE_LOG_API_CALLS", "1", 1);
+  }
+
   return DebugMode;
 }();
 
