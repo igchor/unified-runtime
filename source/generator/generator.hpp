@@ -419,6 +419,15 @@ struct Args {
         params += typeid(arg).name() + std::string("_TODO=");
         params += std::to_string(arg) + ",";
     }
+    void addArg(const ze_group_count_t **arg) {
+        auto varName = nextVarName("group_count");
+        init += "\nze_group_count_t " + varName + "{";
+        init += std::to_string((*arg)->groupCountX) + ",";
+        init += std::to_string((*arg)->groupCountY) + ",";
+        init += std::to_string((*arg)->groupCountZ);
+        init += "};";
+        params += "&" + varName + ",";
+    }
     void addArg(void **arg) {
         if (*arg == nullptr) {
             params += "nullptr,";
@@ -576,6 +585,14 @@ std::string desc_member_to_string(Stringifiable auto member) {
     return std::to_string(member);
 }
 
+std::string desc_member_to_string(Stringifiable auto *member) {
+    return std::to_string(*member);
+}
+
+std::string desc_member_to_string(const char* member) {
+    return "\"" + std::string(member) + "\"";
+}
+
 // std::stringstream os;
 
 void ze_cb_invoke(std::string_view functionName, Args&& args, ze_result_t result) {
@@ -585,6 +602,6 @@ void ze_cb_invoke(std::string_view functionName, Args&& args, ze_result_t result
     std::cout << "ZE_CALL(" << functionName << "(";
     args.params.pop_back(); // remove trailing comma
     std::cout << args.params;
-    std::cout << "))\n";
+    std::cout << "));\n";
 }
 
