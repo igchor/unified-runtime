@@ -13,6 +13,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <errno.h>
+#include <fstream>
+#include <sstream>
+#include <regex>
+#include <string>
 
 #pragma once
 
@@ -24,6 +28,86 @@ if (status_ != ZE_RESULT_SUCCESS) { \
     std::exit(1); \
 }\
 } while(0);
+
+inline std::string type_name_to_var_name(std::string str) {
+    str = std::regex_replace(str, std::regex("\\*"), "");
+    auto skip_ze = str.find('_') + 1;
+    return str.substr(skip_ze, str.find_last_of('_') - skip_ze);
+}
+
+inline std::string trim_ptr(std::string str) {
+    auto pos = str.find('*');
+    if (pos == std::string::npos) return str;
+    str.replace(pos, 1, "");
+    return str;
+}
+
+inline std::string trim(std::string str)
+{
+    str.erase(str.find_last_not_of(", \n")+1);
+    str.erase(0, str.find_first_not_of(", \n"));
+    auto decayed = std::regex_replace(str, std::regex("const "), "");
+    return decayed;
+    // return std::regex_replace(decayed, std::regex("*"), "");
+}
+
+struct ZeApi {
+    ZeApi() {
+        std::ifstream file("ze_api.h");
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        ze_api_content = buffer.str();
+    }
+
+    std::pair<std::string, std::string> get_typename_and_description(std::string fname, size_t param_idx) {
+        size_t line_start_pos = ze_api_content.find(fname + "(");
+        if (line_start_pos == std::string::npos) {
+            throw std::runtime_error("Function " + fname + " not found");
+        }
+        for (size_t i = 0; i <= param_idx; i++) {
+            line_start_pos = ze_api_content.find('\n', line_start_pos + 1);
+            // if line contains only comment, skip it
+            while (ze_api_content.find_first_of("abcdefghijklmnopqrstuvwxyz", line_start_pos + 1) >= ze_api_content.find_first_of("<", line_start_pos + 1)) {
+                line_start_pos = ze_api_content.find('\n', line_start_pos + 1);
+            }
+        }
+
+        // find the start of the line
+        while (ze_api_content[line_start_pos] != '\n') {
+            line_start_pos--;
+        }
+        size_t comment_start_pos = ze_api_content.find("///<", line_start_pos);
+        auto type_name_and_param_name = trim(ze_api_content.substr(line_start_pos, comment_start_pos - line_start_pos));
+        auto description = trim(ze_api_content.substr(comment_start_pos, ze_api_content.find('\n', comment_start_pos) - comment_start_pos));
+        auto type_name = type_name_and_param_name.substr(0, type_name_and_param_name.find(' '));
+        // auto param_name = type_name_and_param_name.substr(type_name_and_param_name.find(' ') + 1);
+        return std::make_pair(type_name, description);
+    }
+
+    std::string get_stype(size_t value) {
+        std::stringstream ss;
+        ss << std::hex << value;
+        std::string hex_val = "0x" + ss.str();
+        
+        size_t def_pos = ze_api_content.find("_ze_structure_type_t");
+        size_t value_pos = ze_api_content.find(hex_val.data(), def_pos);
+        size_t def_end = ze_api_content.find("} ze_structure_type_t;", def_pos);
+
+        if (value_pos > def_end) return std::to_string(value);
+
+        size_t line_start_pos = value_pos;
+
+        // find the start of the line
+        while (ze_api_content[line_start_pos - 1] != '\n') {
+            line_start_pos--;
+        }
+
+        auto stype_name_end = ze_api_content.find('=', line_start_pos);
+        return trim(ze_api_content.substr(line_start_pos, stype_name_end - line_start_pos));
+    }
+
+    std::string ze_api_content;
+};
 
 inline std::shared_ptr<_zel_tracer_handle_t>
 enableTracing(zel_core_callbacks_t &&prologueCallbacks,
@@ -51,160 +135,11 @@ template <class T> std::string getZeStructureType() {
 template <> std::string getZeStructureType<ze_event_pool_desc_t>() {
   return "ZE_STRUCTURE_TYPE_EVENT_POOL_DESC";
 }
-template <> std::string getZeStructureType<ze_fence_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_FENCE_DESC";
-}
-template <> std::string getZeStructureType<ze_command_list_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC";
-}
-template <>
-std::string
-getZeStructureType<ze_mutable_command_list_exp_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_COMMAND_LIST_EXP_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_mutable_command_list_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_COMMAND_LIST_EXP_DESC";
-}
-template <>
-std::string getZeStructureType<ze_mutable_command_id_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_COMMAND_ID_EXP_DESC";
-}
-template <>
-std::string getZeStructureType<ze_mutable_group_count_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_GROUP_COUNT_EXP_DESC";
-}
-template <>
-std::string getZeStructureType<ze_mutable_group_size_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_GROUP_SIZE_EXP_DESC";
-}
-template <>
-std::string getZeStructureType<ze_mutable_global_offset_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_GLOBAL_OFFSET_EXP_DESC";
-}
-template <>
-std::string
-getZeStructureType<ze_mutable_kernel_argument_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_KERNEL_ARGUMENT_EXP_DESC";
-}
-template <>
-std::string getZeStructureType<ze_mutable_commands_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MUTABLE_COMMANDS_EXP_DESC";
-}
-template <> std::string getZeStructureType<ze_context_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_CONTEXT_DESC";
-}
-template <>
-std::string
-getZeStructureType<ze_relaxed_allocation_limits_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_RELAXED_ALLOCATION_LIMITS_EXP_DESC";
-}
-template <>
-std::string
-getZeStructureType<ze_kernel_max_group_size_properties_ext_t>() {
-  return "ZE_STRUCTURE_TYPE_KERNEL_MAX_GROUP_SIZE_EXT_PROPERTIES";
-}
-template <> std::string getZeStructureType<ze_host_mem_alloc_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC";
-}
-template <>
-std::string getZeStructureType<ze_device_mem_alloc_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC";
-}
-template <> std::string getZeStructureType<ze_command_queue_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC";
-}
-template <> std::string getZeStructureType<ze_image_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_IMAGE_DESC";
-}
-template <>
-std::string getZeStructureType<ze_image_bindless_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_BINDLESS_IMAGE_EXP_DESC";
-}
-template <>
-std::string getZeStructureType<ze_image_pitched_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_PITCHED_IMAGE_EXP_DESC";
-}
-template <> std::string getZeStructureType<ze_module_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MODULE_DESC";
-}
-template <>
-std::string getZeStructureType<ze_module_program_exp_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_MODULE_PROGRAM_EXP_DESC";
-}
-template <> std::string getZeStructureType<ze_kernel_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_KERNEL_DESC";
-}
-template <> std::string getZeStructureType<ze_event_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_EVENT_DESC";
-}
-template <> std::string getZeStructureType<ze_sampler_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_SAMPLER_DESC";
-}
-template <> std::string getZeStructureType<ze_physical_mem_desc_t>() {
-  return "ZE_STRUCTURE_TYPE_PHYSICAL_MEM_DESC";
-}
-template <> std::string getZeStructureType<ze_driver_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DRIVER_PROPERTIES";
-}
-template <> std::string getZeStructureType<ze_device_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_p2p_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_P2P_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_compute_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_COMPUTE_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_command_queue_group_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_COMMAND_QUEUE_GROUP_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_image_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_IMAGE_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_module_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_cache_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_CACHE_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_memory_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_MEMORY_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_memory_ext_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_MEMORY_EXT_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_device_ip_version_ext_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT";
-}
-template <>
-std::string getZeStructureType<ze_device_memory_access_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_DEVICE_MEMORY_ACCESS_PROPERTIES";
-}
-template <> std::string getZeStructureType<ze_module_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_MODULE_PROPERTIES";
-}
-template <> std::string getZeStructureType<ze_kernel_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_KERNEL_PROPERTIES";
-}
-template <>
-std::string getZeStructureType<ze_memory_allocation_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_MEMORY_ALLOCATION_PROPERTIES";
-}
-template <> std::string getZeStructureType<ze_pci_ext_properties_t>() {
-  return "ZE_STRUCTURE_TYPE_PCI_EXT_PROPERTIES";
-}
-template <> std::string getZeStructureType<ze_event_pool_counter_based_exp_desc_t>() {
-    return "ZE_STRUCTURE_TYPE_COUNTER_BASED_EVENT_POOL_EXP_DESC";
+
+static ZeApi zeApi;
+
+std::string getZeStructureType(size_t stypeValue) {
+    return zeApi.get_stype(stypeValue);
 }
 
 auto visit_descriptor(const ze_base_desc_t *base, auto fn) {
@@ -395,13 +330,14 @@ template <typename T> concept Properties = !Descriptor<T> && requires(T t) {
     { t.stype } -> std::convertible_to<const ze_structure_type_t&>;
 };
 
-static int next_var_id = 0;
+static std::unordered_map<std::string, int> next_var_id;
 static std::unordered_map<void*, std::string> arg_to_var_name;
 static std::unordered_map<void*, int64_t> arg_to_int_value;
 static std::unordered_map<void*, std::string> driver_allocation_to_var_name;
+static std::unordered_map<void*, std::vector<void*>> array_to_handles;
 
 std::string nextVarName(std::string_view prefix) {
-    return std::string(prefix) + std::to_string(next_var_id++);
+    return std::string(prefix) + std::to_string(next_var_id[std::string(prefix)]++);
 }
 
 template <typename T>
@@ -410,16 +346,19 @@ concept Stringifiable = requires(T member) {
 };
 
 struct Args {
-    void addArg(auto arg) {
+    Args(std::string fname) : fname(fname) {
+    }
+
+    void addArg(auto arg, int param_index) {
         // need manual fixup
         params += typeid(arg).name() + std::string("_TODO,");
     }
-    void addArg(Stringifiable auto arg) {
+    void addArg(Stringifiable auto arg, int param_index) {
         // need manual fixup
         params += typeid(arg).name() + std::string("_TODO=");
         params += std::to_string(arg) + ",";
     }
-    void addArg(const ze_group_count_t **arg) {
+    void addArg(const ze_group_count_t **arg, int param_index) {
         auto varName = nextVarName("group_count");
         init += "\nze_group_count_t " + varName + "{";
         init += std::to_string((*arg)->groupCountX) + ",";
@@ -428,7 +367,7 @@ struct Args {
         init += "};";
         params += "&" + varName + ",";
     }
-    void addArg(void **arg) {
+    void addArg(void **arg, int param_index) {
         if (*arg == nullptr) {
             params += "nullptr,";
             return;
@@ -440,9 +379,22 @@ struct Args {
             return;
         }
 
-        params += "TODO_input,";
+        if ((uintptr_t) *arg > 0x700000000000 && (uintptr_t) *arg < 0x800000000000) {
+            // address is on stack, lookup the destination
+            void **ptr = (void**) *arg;
+            auto it = driver_allocation_to_var_name.find(*ptr);
+            if (it != driver_allocation_to_var_name.end()) {
+                params += "&" + it->second + ",";
+                return;
+            }
+        }
+
+        std::stringstream ss;
+        ss << *arg;
+
+        params += "TODO_input(" + ss.str() + "),";
     }
-    void addArg(const void **arg) {
+    void addArg(const void **arg, int param_index) {
         if (*arg == nullptr) {
             params += "nullptr,";
             return;
@@ -454,12 +406,25 @@ struct Args {
             return;
         }
 
+        if ((uintptr_t) *arg > 0x700000000000 && (uintptr_t) *arg < 0x800000000000) {
+            // address is on stack, lookup the destination
+            void **ptr = (void**) *const_cast<void**>(arg);
+            auto it = driver_allocation_to_var_name.find(*ptr);
+            if (it != driver_allocation_to_var_name.end()) {
+                params += "&" + it->second + ",";
+                return;
+            }
+        }
+
+        std::stringstream ss;
+        ss << *arg;
+
         // if nothing is found, this can be a pointer to host memory
         // we can try to figure out size and read it, but this would
         // make the generate code huge
-        params += "TODO_host_ptr,";
+        params += "TODO_host_ptr(" + ss.str() + "),";
     }
-    void addArg(void ***arg) {
+    void addArg(void ***arg, int param_index) {
         if (*arg == nullptr) {
             params += "nullptr,";
             return;
@@ -472,15 +437,18 @@ struct Args {
 
         params += "&" + it->second + ",";
     }
-    void addArg(std::integral auto *arg) {
+    void addArg(std::integral auto *arg, int param_index) {
         auto value = *arg;
+        lastSize = value;
         params += std::to_string(value) + ",";
     }
-    void addArg(std::integral auto **arg) {
+    void addArg(std::integral auto **arg, int param_index) {
         if (*arg == nullptr) {
             params += "nullptr,";
             return;
         }
+
+        lastSize = **arg;
 
         if (arg_to_int_value.find((void*)(*arg)) == arg_to_int_value.end()) {
             // TODO: this might be needed for some queries
@@ -492,41 +460,59 @@ struct Args {
             params += std::to_string(arg_to_int_value.find((void*)(*arg))->second) + ",";
         }
     }
-    void addArg(Handle auto *arg) {
+    void addArg(Handle auto *arg, int param_index) {
         if (*arg == nullptr) {
             params += "nullptr,";
             return;
         }
 
         if (arg_to_var_name.find((void*)(*arg)) == arg_to_var_name.end()) {
-            std::cerr << "Unknown handle: " << arg_to_var_name.find((void*)(*arg))->second << "\n";
+            //std::cerr << *arg << std::endl;
+            params += "TODO_handle,";
             return;
         }
 
         params += arg_to_var_name[(void*)(*arg)] + ",";
     }
-    void addArg(Handle auto **arg) {
+    void addArg(Handle auto **arg, int param_index) {
         if (*arg == nullptr) {
             params += "nullptr,";
             return;
         }
 
+        auto [type_name, description] = zeApi.get_typename_and_description(fname, param_index);
+
+        if (description.find("range(") != std::string::npos) {
+            // assert(param_index > 0);
+            auto varName = nextVarName("arr_" + type_name_to_var_name(type_name));
+            init += "\n" + trim_ptr(type_name) + " " + varName + "[" + std::to_string(lastSize) + "];";
+           // std::cerr << "lastSize: " << lastSize << std::endl;
+            for (int i = 0; i < lastSize; i++) {
+                //std::cerr << i << " " << (*arg)[i] << std::endl;
+                arg_to_var_name[(void*)(*arg)[i]] = varName + "[" + std::to_string(i) + "]";
+                init += "\n" + varName + "[" + std::to_string(i) + "] = &" + arg_to_var_name[(void*)(*arg)[i]] + ";";
+            }
+            params += varName + ",";
+            arg_to_var_name[(void*)(*arg)] = varName;
+            return;
+        }
+
         if (arg_to_var_name.find((void*)(**arg)) != arg_to_var_name.end()) {
-            // if the handle is known, it means it's a pointer to array of handles
-            // TODO: implement
-            params += "TODO_array_of_handles,";
+            // handle shouldn't be know, it should be either array (already handled) or out param
+            params += "TODO,";
             return;
         }
         // otherwise it's output parameter
-        auto varName = nextVarName("handle");
-        init += "\nvoid* " + varName + "{};";
+        auto varName = nextVarName(type_name_to_var_name(type_name));
+        init += "\n" + trim_ptr(type_name) + " " + varName + "{};";
         arg_to_var_name[(void*)(**arg)] = varName;
         params += "&" + varName + ",";
     }
-    void addArg(Properties auto **arg) {
+    void addArg(Properties auto **arg, int param_index) {
         params += "TODOproperties,";
+        skip = true;
     }
-    void addArg(Descriptor auto **arg) {
+    void addArg(Descriptor auto **arg, int param_index) {
         auto [var, in] = initDescriptor(**arg);
         init += in;
         params += "&" + var + ",";
@@ -534,6 +520,9 @@ struct Args {
 
     std::string init;
     std::string params;
+    std::string fname;
+    size_t lastSize = 0;
+    bool skip = false;
 
 private:
     std::pair<std::string, std::string> initDescriptor(Descriptor auto desc) {
@@ -560,13 +549,14 @@ private:
     }
 };
 
-Args make_args(auto params) {
-    Args args;
-
+Args make_args(std::string fname, auto params) {
     auto tuple = make_tuple(params);
 
+    Args args(fname);
+
+    int param_index = 0;
     std::apply([&](auto... a) {
-        (args.addArg(a), ...);
+        (args.addArg(a, param_index++), ...);
     }, tuple);
 
     return args;
@@ -578,7 +568,7 @@ std::string desc_member_to_string(auto member) {
 
 template <Descriptor D>
 std::string desc_member_to_string(D member) {
-    return getZeStructureType<D>();
+    return getZeStructureType(member);
 }
 
 std::string desc_member_to_string(Stringifiable auto member) {
@@ -597,6 +587,10 @@ std::string desc_member_to_string(const char* member) {
 
 void ze_cb_invoke(std::string_view functionName, Args&& args, ze_result_t result) {
     std::ignore = result;
+
+    if (args.skip) {
+        return;
+    }
 
     std::cout << args.init << "\n";
     std::cout << "ZE_CALL(" << functionName << "(";

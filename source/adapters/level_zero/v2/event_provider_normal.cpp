@@ -22,7 +22,7 @@
 #include "../common.hpp"
 
 namespace v2 {
-static constexpr int EVENTS_BURST = 64;
+static constexpr int EVENTS_BURST = 4;
 
 provider_pool::provider_pool(ur_context_handle_t context, queue_type queue,
                              event_flags_t flags) {

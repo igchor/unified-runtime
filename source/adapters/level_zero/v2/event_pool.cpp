@@ -15,7 +15,7 @@
 
 namespace v2 {
 
-static constexpr size_t EVENTS_BURST = 64;
+static constexpr size_t EVENTS_BURST = 4;
 
 ur_pooled_event_t *event_pool::allocate() {
   TRACK_SCOPE_LATENCY("event_pool::allocate");
